@@ -1,0 +1,16 @@
+{
+  "status": "built",
+  "deployApproval": "pending",
+  "updatedAt": "2026-03-23T19:08:36.122Z",
+  "retries": 0,
+  "outputDir": "build/nfp-food-insecurity-map",
+  "agentResult": {
+    "costUsd": 6.8351520000000034,
+    "numTurns": 36,
+    "durationMs": 915166
+  },
+  "specScore": {
+    "score": 88,
+    "recommendation": "proceed"
+  }
+}

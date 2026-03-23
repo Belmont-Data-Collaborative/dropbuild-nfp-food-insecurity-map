@@ -1,0 +1,8 @@
+{
+  "passed": false,
+  "serverStarted": false,
+  "error": "Server process exited before curl check",
+  "durationMs": 8007,
+  "checkedAt": "2026-03-23T19:08:36.128Z",
+  "runtime": "streamlit"
+}
