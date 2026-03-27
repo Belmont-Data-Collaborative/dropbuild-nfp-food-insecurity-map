@@ -1,7 +1,7 @@
 {
   "status": "built",
   "deployApproval": "pending",
-  "updatedAt": "2026-03-23T19:08:36.122Z",
+  "updatedAt": "2026-03-23T19:19:03.582Z",
   "retries": 0,
   "outputDir": "build/nfp-food-insecurity-map",
   "agentResult": {
@@ -12,5 +12,6 @@
   "specScore": {
     "score": 88,
     "recommendation": "proceed"
-  }
+  },
+  "githubRepo": "git@github.com:Belmont-Data-Collaborative/dropbuild-nfp-food-insecurity-map.git"
 }
