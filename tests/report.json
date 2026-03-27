@@ -1,0 +1,32 @@
+{
+  "appId": "nfp-food-insecurity-map",
+  "runtime": "streamlit",
+  "buildDate": "2026-03-23T18:51:36.475Z",
+  "buildFinishedAt": "2026-03-23T19:08:36.128Z",
+  "overallStatus": "passed",
+  "summary": {
+    "staticAnalysis": "passed",
+    "smoke": "skipped",
+    "unit": "passed"
+  },
+  "smoke": {
+    "passed": false,
+    "serverStarted": false,
+    "error": "Server process exited before curl check",
+    "durationMs": 8007
+  },
+  "staticAnalysis": {
+    "passed": true,
+    "errorCount": 0,
+    "warningCount": 1,
+    "tscErrors": null
+  },
+  "unit": {
+    "runner": "pytest",
+    "total": 69,
+    "passed": 69,
+    "failed": 0,
+    "skipped": 0,
+    "failures": []
+  }
+}

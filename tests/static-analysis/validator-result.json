@@ -1,0 +1,9 @@
+{
+  "passed": true,
+  "errors": [],
+  "warnings": [
+    "Smoke test: server failed to start — Server process exited before curl check"
+  ],
+  "checkedAt": "2026-03-23T19:08:36.128Z",
+  "runtime": "streamlit"
+}

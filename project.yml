@@ -1,0 +1,136 @@
+project:
+  name: "NFP Food Insecurity Map"
+  slug: "nfp-food-insecurity-map"
+  primary_org: "Nashville Food Project"
+  secondary_org: "BDAIC"
+
+geography:
+  state_fips: "47"
+  county_fips: "037"
+  county_name: "Davidson County"
+  state_name: "Tennessee"
+  map_center: [36.1627, -86.7816]
+  default_zoom: 11
+  tiger_year: 2023
+
+data_sources:
+  census_acs:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "nfp-mapping/census/acs/tract/"
+      zip: "nfp-mapping/census/acs/zcta/"
+    output_prefix: acs
+    geoid_column: GEO_ID
+    variables:
+      - column: DP03_0062E
+        display_name: "Median Household Income"
+        colormap: YlGnBu
+        legend_name: "Median Household Income ($)"
+        format_str: "${:,.0f}"
+        tooltip_alias: "Income"
+        default_visible: true
+      - column: DP03_0119PE
+        display_name: "Poverty Rate"
+        colormap: YlOrRd
+        legend_name: "Poverty Rate (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Poverty"
+        default_visible: false
+      - column: DP05_0001E
+        display_name: "Total Population"
+        colormap: Blues
+        legend_name: "Population"
+        format_str: "{:,.0f}"
+        tooltip_alias: "Population"
+        default_visible: false
+
+  health_lila:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "nfp-mapping/health/cdc_places/tract/"
+      zip: "nfp-mapping/health/cdc_places/zcta/"
+    output_prefix: health_lila
+    geoid_column: LocationID
+    filters:
+      - column: Data_Value_Type
+        value: "Crude prevalence"
+    variables:
+      - column: DIABETES_CrudePrev
+        display_name: "Diabetes Prevalence"
+        colormap: YlOrRd
+        legend_name: "Diabetes Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Diabetes"
+        default_visible: false
+      - column: HIGHBP_CrudePrev
+        display_name: "Hypertension Prevalence"
+        colormap: Reds
+        legend_name: "Hypertension Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Hypertension"
+        default_visible: false
+      - column: OBESITY_CrudePrev
+        display_name: "Obesity Prevalence"
+        colormap: OrRd
+        legend_name: "Obesity Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Obesity"
+        default_visible: false
+
+partners:
+  source_type: s3
+  s3_bucket: bdaic-public-transform
+  s3_key: "nfp-mapping/partners/nfp_partners.csv"
+  geocode_cache_key: "nfp-mapping/partners/geocode_cache.csv"
+  popup_fields:
+    - partner_name
+    - address
+    - partner_type
+  types:
+    school_summer:
+      label: "School & Summer Programs"
+      color: "#E41A1C"
+      icon: "graduation-cap"
+    medical_health:
+      label: "Medical & Health Services"
+      color: "#377EB8"
+      icon: "heartbeat"
+    transitional_housing:
+      label: "Transitional Housing"
+      color: "#4DAF4A"
+      icon: "home"
+    senior_services:
+      label: "Senior Services"
+      color: "#984EA3"
+      icon: "user"
+    community_development:
+      label: "Community Development"
+      color: "#FF7F00"
+      icon: "users"
+    homeless_outreach:
+      label: "Homeless Outreach"
+      color: "#A65628"
+      icon: "hand-holding-heart"
+    workforce_development:
+      label: "Workforce Development"
+      color: "#F781BF"
+      icon: "briefcase"
+    after_school:
+      label: "After-School Programs"
+      color: "#999999"
+      icon: "child"
+
+map_display:
+  tiles: cartodbpositron
+  tile_attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  min_zoom: 10
+  max_zoom: 16
+  granularities:
+    - id: tract
+      label: "Census Tracts"
+      geo_file: "data/geo/tracts.geojson"
+    - id: zip
+      label: "ZIP Codes"
+      geo_file: "data/geo/zipcodes.geojson"
