@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from src.config_loader import (
     get_data_sources,
     get_geography,
+    get_granularities,
     get_partner_config,
 )
 from src import config
@@ -69,6 +70,8 @@ def run_data_step(source_key: str) -> None:
     """Run a single data source processing step."""
     sources = get_data_sources()
     geography = get_geography()
+    granularities = get_granularities()
+    gran_lookup = {g["id"]: g for g in granularities}
 
     if source_key not in sources:
         logger.error("Unknown data source: %s", source_key)
@@ -79,7 +82,11 @@ def run_data_step(source_key: str) -> None:
 
     for granularity in ["tract", "zip"]:
         logger.info("Processing %s / %s ...", source_key, granularity)
-        process_data_source(source_key, source_config, geography, granularity)
+        gran_config = gran_lookup.get(granularity)
+        process_data_source(
+            source_key, source_config, geography, granularity,
+            granularity_config=gran_config,
+        )
 
 
 def run_partners_step() -> None:

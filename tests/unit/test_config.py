@@ -79,9 +79,9 @@ class TestConfigLoader:
         assert "DP03_0062E" in columns
         assert "DP03_0119PE" in columns
         assert "DP05_0001E" in columns
-        assert "DIABETES_CrudePrev" in columns
-        assert "HIGHBP_CrudePrev" in columns
-        assert "OBESITY_CrudePrev" in columns
+        assert "DIABETES" in columns
+        assert "BPHIGH" in columns
+        assert "OBESITY" in columns
 
     def test_layer_configs_have_required_fields(self):
         required = {"column", "display_name", "colormap", "format_str"}

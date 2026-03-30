@@ -239,7 +239,7 @@ def generate_cdc_places(
     return pd.DataFrame(
         {
             "GEOID": geoids,
-            "DIABETES_CrudePrev": np.round(diabetes, 1),
+            "DIABETES": np.round(diabetes, 1),
             "data_vintage": "CDC PLACES 2022",
         }
     )

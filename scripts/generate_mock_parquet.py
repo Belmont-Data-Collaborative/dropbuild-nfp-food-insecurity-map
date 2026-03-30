@@ -52,13 +52,13 @@ def main() -> None:
         df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
 
         df_out = df[["GEOID"]].copy()
-        if "DIABETES_CrudePrev" in df.columns:
-            df_out["DIABETES_CrudePrev"] = df["DIABETES_CrudePrev"]
+        if "DIABETES" in df.columns:
+            df_out["DIABETES"] = df["DIABETES"]
 
         # Add mock hypertension and obesity columns
         rng = np.random.default_rng(43)
-        df_out["HIGHBP_CrudePrev"] = np.round(rng.uniform(20, 45, size=len(df_out)), 1)
-        df_out["OBESITY_CrudePrev"] = np.round(rng.uniform(25, 42, size=len(df_out)), 1)
+        df_out["BPHIGH"] = np.round(rng.uniform(20, 45, size=len(df_out)), 1)
+        df_out["OBESITY"] = np.round(rng.uniform(25, 42, size=len(df_out)), 1)
 
         df_out.to_parquet(choropleth_dir / "health_lila_tract_data.parquet", index=False)
         print(f"Saved {len(df_out)} rows to health_lila_tract_data.parquet")

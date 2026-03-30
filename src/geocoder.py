@@ -12,6 +12,7 @@ import time
 
 import pandas as pd
 import streamlit as st
+from geopy.exc import GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError
 from geopy.geocoders import Nominatim
 
 from src import config
@@ -42,7 +43,7 @@ def load_geocode_cache(bucket: str | None = None) -> pd.DataFrame:
         if os.path.exists(cache_path):
             try:
                 return pd.read_csv(cache_path)
-            except Exception:
+            except (FileNotFoundError, pd.errors.ParserError, OSError):
                 pass
         return pd.DataFrame(columns=["address", "latitude", "longitude"])
 
@@ -119,7 +120,7 @@ def geocode_partners(partners_df: pd.DataFrame) -> pd.DataFrame:
                     "longitude": float("nan"),
                     "geocode_status": "failed",
                 })
-        except Exception as exc:
+        except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError, ValueError) as exc:
             logger.warning("Geocoding failed for '%s': %s", address_str, exc)
             results.append({
                 "partner_name": name,

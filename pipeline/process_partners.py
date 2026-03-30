@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+from botocore.exceptions import ClientError
+from geopy.exc import GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError
 from geopy.geocoders import Nominatim
 
 logger = logging.getLogger(__name__)
@@ -74,8 +76,8 @@ def load_geocode_cache(
         response = client.get_object(Bucket=bucket, Key=key)
         body = response["Body"].read()
         return pd.read_csv(io.BytesIO(body))
-    except Exception:
-        logger.info("No existing geocode cache found on S3")
+    except (ClientError, FileNotFoundError, pd.errors.ParserError) as exc:
+        logger.info("No existing geocode cache found on S3: %s", exc)
         return pd.DataFrame(columns=["address", "latitude", "longitude"])
 
 
@@ -100,7 +102,7 @@ def save_geocode_cache(
             Body=csv_buffer.getvalue().encode("utf-8"),
         )
         logger.info("Geocode cache saved to S3")
-    except Exception as exc:
+    except (ClientError, OSError) as exc:
         logger.warning("Failed to write geocode cache to S3: %s", exc)
 
 
@@ -221,7 +223,7 @@ def geocode_partners(
                     "geocode_status": "failed",
                 })
                 fail_count += 1
-        except Exception as exc:
+        except (GeocoderTimedOut, GeocoderUnavailable, GeocoderServiceError, ValueError) as exc:
             logger.warning("Geocoding failed for '%s': %s", address_str, exc)
             results.append({
                 "partner_name": name,

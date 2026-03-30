@@ -149,7 +149,7 @@ def process_zctas(geo_cfg: dict, output_dir: Path, county_gdf: gpd.GeoDataFrame 
 
     # Clip to county boundary if available
     if county_gdf is not None and not county_gdf.empty:
-        county_boundary = county_gdf.geometry.union_all()
+        county_boundary = county_gdf.geometry.unary_union
         gdf = gpd.clip(gdf, county_boundary)
         gdf = fix_geometries(gdf)
 

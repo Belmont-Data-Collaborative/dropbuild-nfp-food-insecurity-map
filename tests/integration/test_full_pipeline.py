@@ -47,9 +47,9 @@ def sample_gdf():
             "DP03_0062E": [58000, 41000, 74500],
             "DP03_0119PE": [12.5, 22.3, 8.7],
             "DP05_0001E": [5000, 3000, 8000],
-            "DIABETES_CrudePrev": [14.2, 18.5, 9.1],
-            "HIGHBP_CrudePrev": [32.1, 38.5, 25.0],
-            "OBESITY_CrudePrev": [35.2, 40.1, 28.0],
+            "DIABETES": [14.2, 18.5, 9.1],
+            "BPHIGH": [32.1, 38.5, 25.0],
+            "OBESITY": [35.2, 40.1, 28.0],
         },
         geometry=[
             Polygon([(-86.80, 36.16), (-86.78, 36.16), (-86.78, 36.18), (-86.80, 36.18)]),
@@ -151,7 +151,7 @@ class TestFullMapAssembly:
         """Build a map with multiple choropleth layers togglable via LayerControl."""
         m = folium.Map(location=[36.1627, -86.7816], zoom_start=11)
 
-        layers_to_add = ["DP03_0062E", "DP03_0119PE", "DIABETES_CrudePrev"]
+        layers_to_add = ["DP03_0062E", "DP03_0119PE", "DIABETES"]
         for col in layers_to_add:
             cfg = next(
                 (l for l in get_all_layer_configs() if l["column"] == col),

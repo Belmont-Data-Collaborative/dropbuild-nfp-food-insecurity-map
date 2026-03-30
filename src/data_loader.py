@@ -91,7 +91,7 @@ def load_geodata(granularity: str) -> gpd.GeoDataFrame:
             logger.info(
                 "Merged %s: %d data columns", source_key, len(data_cols)
             )
-        except Exception as exc:
+        except (FileNotFoundError, pd.errors.ParserError, OSError) as exc:
             logger.warning("Failed to load %s: %s", parquet_path, exc)
 
     return gdf

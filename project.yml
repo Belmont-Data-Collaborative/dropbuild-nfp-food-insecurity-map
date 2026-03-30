@@ -18,8 +18,8 @@ data_sources:
     source_type: s3
     s3_bucket: bdaic-public-transform
     s3_prefix:
-      tract: "nfp-mapping/census/acs/tract/"
-      zip: "nfp-mapping/census/acs/zcta/"
+      tract: "census_acs5_profile/geo_tract/"
+      zip: "census_acs5_profile/geo_zipcode/"
     output_prefix: acs
     geoid_column: GEO_ID
     variables:
@@ -49,29 +49,29 @@ data_sources:
     source_type: s3
     s3_bucket: bdaic-public-transform
     s3_prefix:
-      tract: "nfp-mapping/health/cdc_places/tract/"
-      zip: "nfp-mapping/health/cdc_places/zcta/"
+      tract: "cdc_places/census_tract/"
+      zip: "cdc_places/zcta/"
     output_prefix: health_lila
     geoid_column: LocationID
     filters:
       - column: Data_Value_Type
         value: "Crude prevalence"
     variables:
-      - column: DIABETES_CrudePrev
+      - column: DIABETES
         display_name: "Diabetes Prevalence"
         colormap: YlOrRd
         legend_name: "Diabetes Prevalence (%)"
         format_str: "{:.1f}%"
         tooltip_alias: "Diabetes"
         default_visible: false
-      - column: HIGHBP_CrudePrev
+      - column: BPHIGH
         display_name: "Hypertension Prevalence"
         colormap: Reds
         legend_name: "Hypertension Prevalence (%)"
         format_str: "{:.1f}%"
         tooltip_alias: "Hypertension"
         default_visible: false
-      - column: OBESITY_CrudePrev
+      - column: OBESITY
         display_name: "Obesity Prevalence"
         colormap: OrRd
         legend_name: "Obesity Prevalence (%)"

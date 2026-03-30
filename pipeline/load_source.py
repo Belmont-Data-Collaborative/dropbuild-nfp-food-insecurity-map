@@ -6,8 +6,10 @@ county-level filtering, Census sentinel replacement, and Parquet output.
 from __future__ import annotations
 
 import io
+import json
 import logging
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -23,11 +25,45 @@ def get_s3_client() -> boto3.client:
     return boto3.client("s3")
 
 
+def _extract_year_from_key(key: str) -> int | None:
+    """Extract a 4-digit year (2000-2099) from an S3 key."""
+    matches = re.findall(r"(20\d{2})", key)
+    return max(int(m) for m in matches) if matches else None
+
+
+def _pick_latest_data_key(contents: list[dict]) -> str | None:
+    """Pick the latest CSV or Parquet file from S3 listing.
+
+    Prefers the highest vintage year in the filename. If no year is found,
+    falls back to the most recent LastModified timestamp.
+    Prefers Parquet over CSV when both exist for the same year.
+    """
+    data_files = [
+        obj for obj in contents
+        if obj["Key"].endswith(".csv") or obj["Key"].endswith(".parquet")
+    ]
+    if not data_files:
+        return None
+
+    def sort_key(obj: dict) -> tuple:
+        key = obj["Key"]
+        year = _extract_year_from_key(key)
+        is_parquet = 1 if key.endswith(".parquet") else 0
+        last_modified = obj.get("LastModified", "")
+        return (year or 0, is_parquet, last_modified)
+
+    data_files.sort(key=sort_key, reverse=True)
+    return data_files[0]["Key"]
+
+
 def load_from_s3_prefix(
     bucket: str,
     prefix: str,
 ) -> pd.DataFrame:
     """Discover and load the latest CSV/Parquet file under an S3 prefix.
+
+    Picks the file with the highest vintage year in its filename.
+    Falls back to LastModified if no year is found in filenames.
 
     Args:
         bucket: S3 bucket name.
@@ -48,19 +84,15 @@ def load_from_s3_prefix(
             f"No files found under s3://{bucket}/{prefix}"
         )
 
-    # Sort by last modified, pick newest
-    contents.sort(key=lambda x: x["LastModified"], reverse=True)
+    key = _pick_latest_data_key(contents)
+    if key is None:
+        raise FileNotFoundError(
+            f"No CSV or Parquet files found under s3://{bucket}/{prefix}"
+        )
 
-    for obj in contents:
-        key = obj["Key"]
-        if key.endswith(".parquet"):
-            return _load_parquet_from_s3(client, bucket, key)
-        if key.endswith(".csv"):
-            return _load_csv_from_s3(client, bucket, key)
-
-    raise FileNotFoundError(
-        f"No CSV or Parquet files found under s3://{bucket}/{prefix}"
-    )
+    if key.endswith(".parquet"):
+        return _load_parquet_from_s3(client, bucket, key)
+    return _load_csv_from_s3(client, bucket, key)
 
 
 def load_from_s3_key(bucket: str, key: str) -> pd.DataFrame:
@@ -102,9 +134,14 @@ def _load_parquet_from_s3(
 
 
 def normalize_geoid(df: pd.DataFrame, geoid_col: str = "GEOID") -> pd.DataFrame:
-    """Normalize GEOID column to 11-character zero-filled strings."""
+    """Normalize GEOID column to 11-character zero-filled strings.
+
+    Strips Census-style prefixes (e.g. '1400000US', '860Z200US') before zero-filling.
+    """
     if geoid_col in df.columns:
-        df[geoid_col] = df[geoid_col].astype(str).str.zfill(11)
+        col = df[geoid_col].astype(str)
+        col = col.str.replace(r"^.*US", "", regex=True)
+        df[geoid_col] = col.str.zfill(11)
     return df
 
 
@@ -113,8 +150,22 @@ def filter_by_county(
     state_fips: str,
     county_fips: str,
     geoid_col: str = "GEOID",
+    allowed_geoids: set[str] | None = None,
 ) -> pd.DataFrame:
-    """Filter DataFrame to rows matching state+county FIPS prefix."""
+    """Filter DataFrame to rows matching county.
+
+    For tract-level data, matches by state+county FIPS prefix.
+    If allowed_geoids is provided (e.g. ZCTAs from geo file), filters to that set.
+    """
+    if allowed_geoids is not None:
+        mask = df[geoid_col].astype(str).isin(allowed_geoids)
+        filtered = df[mask].copy()
+        logger.info(
+            "Filtered %d -> %d rows using allowed GEOID set (%d IDs)",
+            len(df), len(filtered), len(allowed_geoids),
+        )
+        return filtered
+
     prefix = state_fips + county_fips
     mask = df[geoid_col].astype(str).str.startswith(prefix)
     filtered = df[mask].copy()
@@ -123,6 +174,28 @@ def filter_by_county(
         len(df), len(filtered), prefix,
     )
     return filtered
+
+
+def load_geoid_set_from_geofile(geo_file: str) -> set[str]:
+    """Load the set of GEOIDs from a GeoJSON file for filtering.
+
+    Returns GEOIDs in multiple normalized forms to handle format mismatches
+    (e.g. ZCTA '37135' vs zero-padded '00000037135').
+    """
+    path = Path(geo_file)
+    if not path.exists():
+        logger.warning("Geo file %s not found — skipping GEOID set filter", geo_file)
+        return set()
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    geoids = set()
+    for feature in data.get("features", []):
+        gid = str(feature.get("properties", {}).get("GEOID", ""))
+        if gid:
+            geoids.add(gid)
+            geoids.add(gid.zfill(11))
+    logger.info("Loaded %d GEOIDs from %s", len(geoids) // 2, geo_file)
+    return geoids
 
 
 def replace_census_sentinels(df: pd.DataFrame) -> pd.DataFrame:
@@ -146,6 +219,42 @@ def apply_filters(
     return df
 
 
+def pivot_long_to_wide(
+    df: pd.DataFrame,
+    var_columns: list[str],
+    geoid_col: str = "GEOID",
+    measure_col: str = "MeasureId",
+    value_col: str = "Data_Value",
+) -> pd.DataFrame:
+    """Pivot long-format data (one row per measure) to wide format (one row per GEOID).
+
+    CDC PLACES 2025+ uses long format with MeasureId/Data_Value columns.
+    Earlier vintages use wide format with measure columns directly.
+    """
+    if measure_col not in df.columns or value_col not in df.columns:
+        return df
+
+    # Filter to only the measures we need
+    df_filtered = df[df[measure_col].isin(var_columns)].copy()
+    if df_filtered.empty:
+        logger.warning("No matching measures found for pivot: %s", var_columns)
+        return df
+
+    pivoted = df_filtered.pivot_table(
+        index=geoid_col,
+        columns=measure_col,
+        values=value_col,
+        aggfunc="first",
+    ).reset_index()
+
+    pivoted.columns.name = None
+    logger.info(
+        "Pivoted long->wide: %d rows, columns: %s",
+        len(pivoted), list(pivoted.columns),
+    )
+    return pivoted
+
+
 def save_parquet(df: pd.DataFrame, output_path: str) -> None:
     """Save DataFrame as Parquet file."""
     path = Path(output_path)
@@ -159,6 +268,7 @@ def process_data_source(
     source_config: dict[str, Any],
     geography: dict[str, Any],
     granularity: str,
+    granularity_config: dict[str, Any] | None = None,
 ) -> pd.DataFrame | None:
     """Process a single data source for a given granularity.
 
@@ -170,6 +280,7 @@ def process_data_source(
         source_config: Source configuration dict from project.yml.
         geography: Geography configuration dict.
         granularity: 'tract' or 'zip'.
+        granularity_config: Granularity dict with geo_file path for ZCTA filtering.
 
     Returns:
         Processed DataFrame, or None if loading fails.
@@ -194,8 +305,17 @@ def process_data_source(
         df = df.rename(columns={geoid_col: "GEOID"})
 
     df = normalize_geoid(df)
+
+    # For ZCTA/zip granularity, use geo file GEOIDs instead of FIPS prefix
+    allowed_geoids = None
+    if granularity == "zip" and granularity_config:
+        geo_file = granularity_config.get("geo_file", "")
+        if geo_file:
+            allowed_geoids = load_geoid_set_from_geofile(geo_file)
+
     df = filter_by_county(
-        df, geography["state_fips"], geography["county_fips"]
+        df, geography["state_fips"], geography["county_fips"],
+        allowed_geoids=allowed_geoids,
     )
     df = replace_census_sentinels(df)
 
@@ -206,6 +326,13 @@ def process_data_source(
 
     # Keep only GEOID + variable columns
     var_columns = [v["column"] for v in source_config.get("variables", [])]
+
+    # Detect long-format data (e.g. CDC PLACES 2025+) and pivot to wide
+    missing_vars = [c for c in var_columns if c not in df.columns]
+    if missing_vars and "MeasureId" in df.columns and "Data_Value" in df.columns:
+        logger.info("Detected long-format data — pivoting to wide for: %s", missing_vars)
+        df = pivot_long_to_wide(df, var_columns)
+
     keep_cols = ["GEOID"] + [c for c in var_columns if c in df.columns]
     df = df[keep_cols].copy()
 
