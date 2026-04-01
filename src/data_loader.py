@@ -15,7 +15,7 @@ import pandas as pd
 import streamlit as st
 
 from src import config
-from src.config_loader import get_all_layer_configs, get_data_sources, get_granularities
+from src.config_loader import get_all_layer_configs, get_data_sources, get_granularities, get_map_display
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,9 @@ def load_geodata(granularity: str) -> gpd.GeoDataFrame:
     # Load GeoJSON
     gdf = gpd.read_file(str(geo_path))
 
-    # Simplify geometries for performance
-    gdf["geometry"] = gdf.geometry.simplify(0.001, preserve_topology=True)
+    # Simplify geometries for performance (configurable via project.yml)
+    tolerance = get_map_display().get("simplify_tolerance", 0.001)
+    gdf["geometry"] = gdf.geometry.simplify(tolerance, preserve_topology=True)
 
     # Normalize GEOIDs
     if "GEOID" in gdf.columns:

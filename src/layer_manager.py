@@ -8,11 +8,28 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from dataclasses import dataclass, field
+
 import branca.colormap
 import folium
 import geopandas as gpd
 import numpy as np
 import pandas as pd
+
+
+@dataclass
+class LegendInfo:
+    """Legend metadata returned by layer builders for the legend control.
+
+    For continuous layers: colors is a list of RGBA tuples, vmin/vmax are set.
+    For categorical layers: categories maps value → (color_hex, label).
+    """
+
+    colors: list = field(default_factory=list)
+    vmin: float = 0.0
+    vmax: float = 1.0
+    caption: str = ""
+    categories: dict[int | str, tuple[str, str]] | None = None
 
 logger = logging.getLogger(__name__)
 
@@ -100,12 +117,15 @@ def build_partner_markers(
 def build_choropleth_layer(
     gdf: gpd.GeoDataFrame,
     layer_config: dict[str, Any],
+    *,
+    show: bool | None = None,
 ) -> tuple[folium.FeatureGroup, branca.colormap.LinearColormap]:
     """Build a single choropleth layer as a toggleable FeatureGroup.
 
     Args:
         gdf: Merged GeoDataFrame with geometry + data columns.
         layer_config: Variable configuration from project.yml.
+        show: If provided, overrides default_visible for the FeatureGroup.
 
     Returns:
         Tuple of (FeatureGroup, LinearColormap) for the layer.
@@ -117,9 +137,11 @@ def build_choropleth_layer(
     tooltip_alias = layer_config.get("tooltip_alias", display_name)
     default_visible = layer_config.get("default_visible", False)
 
+    visible = show if show is not None else default_visible
+
     fg = folium.FeatureGroup(
         name=display_name,
-        show=default_visible,
+        show=visible,
     )
 
     # Get values for colormap
@@ -280,6 +302,28 @@ def build_boundary_layer(
         )
     )
     layer.add_to(fg)
+    return fg
+
+
+def build_county_boundaries_layer(
+    county_gdf: gpd.GeoDataFrame,
+) -> folium.FeatureGroup:
+    """Render MSA county boundaries as a reference overlay.
+
+    Displays dashed boundary lines so they don't visually compete with
+    tract-level choropleth shading. Toggleable via LayerControl.
+    """
+    fg = folium.FeatureGroup(name="County Boundaries", show=True)
+    folium.GeoJson(
+        json.loads(county_gdf.to_json()),
+        style_function=lambda x: {
+            "fillColor": "transparent",
+            "color": "#333333",
+            "weight": 2,
+            "dashArray": "5,5",
+        },
+        tooltip=folium.GeoJsonTooltip(fields=["NAME"], aliases=["County:"]),
+    ).add_to(fg)
     return fg
 
 

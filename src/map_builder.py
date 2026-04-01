@@ -6,9 +6,11 @@ and LayerControl. Returns cached HTML string.
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 import folium
+import geopandas as gpd
 import streamlit as st
 
 from src.config_loader import (
@@ -21,6 +23,7 @@ from src.data_loader import DataLoadError, load_geodata
 from src.layer_manager import (
     build_boundary_layer,
     build_choropleth_layer,
+    build_county_boundaries_layer,
     build_partner_markers,
 )
 from src.partner_loader import load_partners
@@ -58,6 +61,26 @@ def build_map_html(
         max_zoom=map_cfg["max_zoom"],
     )
 
+    # Fit map to MSA boundary if available
+    msa_boundary_path = Path("data/geo/msa_boundary.geojson")
+    if msa_boundary_path.exists():
+        try:
+            msa_gdf = gpd.read_file(str(msa_boundary_path))
+            bounds = msa_gdf.total_bounds  # [minx, miny, maxx, maxy]
+            m.fit_bounds([[bounds[1], bounds[0]], [bounds[3], bounds[2]]])
+        except Exception:
+            logger.warning("Could not fit map to MSA boundary")
+
+    # Add county boundaries overlay (dashed lines, toggleable)
+    county_boundaries_path = Path("data/geo/county_boundaries.geojson")
+    if county_boundaries_path.exists():
+        try:
+            county_gdf = gpd.read_file(str(county_boundaries_path))
+            county_fg = build_county_boundaries_layer(county_gdf)
+            county_fg.add_to(m)
+        except Exception:
+            logger.warning("Could not load county boundaries")
+
     # Load merged geodata
     try:
         gdf = load_geodata(granularity)
@@ -72,7 +95,7 @@ def build_map_html(
 
     for layer_cfg in all_layers:
         if layer_cfg["column"] in selected_layers:
-            fg, cmap = build_choropleth_layer(gdf, layer_cfg)
+            fg, cmap = build_choropleth_layer(gdf, layer_cfg, show=True)
             fg.add_to(m)
             colormaps[layer_cfg["display_name"]] = cmap
             has_active_layer = True
@@ -95,12 +118,145 @@ def build_map_html(
     # LayerControl
     folium.LayerControl(collapsed=False).add_to(m)
 
-    # Add colormaps as legends
-    for name, cmap in colormaps.items():
-        cmap.caption = name
-        cmap.add_to(m)
+    # Add legends at bottom-right (do NOT use cmap.add_to(m) — branca
+    # hardcodes position: 'topright' and uses D3/SVG that breaks when
+    # the DOM element is moved. See MISTAKES_DB.md G009.)
+    if colormaps:
+        _add_bottom_right_legends(m, colormaps, all_layers)
 
     return m._repr_html_()
+
+
+def _rgba_to_hex(rgba: tuple) -> str:
+    """Convert an RGBA tuple (0-1 floats) to a hex color string."""
+    r, g, b = int(rgba[0] * 255), int(rgba[1] * 255), int(rgba[2] * 255)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _add_bottom_right_legends(
+    m: folium.Map,
+    colormaps: dict[str, Any],
+    all_layer_configs: list[dict[str, Any]],
+) -> None:
+    """Create a single combined legend control at bottomright.
+
+    Uses ONE L.control containing all layer legend sections. Each section
+    is toggled via direct JS object reference when the in-map LayerControl
+    fires overlayadd/overlayremove. This avoids:
+    - Branca's hardcoded topright + D3/SVG (see G009)
+    - Multiple stacked controls that reflow when one is hidden,
+      shifting other legends out of the visible map area
+    - querySelector matching issues
+
+    See MISTAKES_DB.md G009 for rationale.
+    """
+    import json
+
+    import branca.element
+
+    map_var = m.get_name()
+
+    # Build config lookup by display_name for format strings
+    cfg_by_name: dict[str, dict] = {}
+    for cfg in all_layer_configs:
+        cfg_by_name[cfg["display_name"]] = cfg
+
+    # Build legend data for each colormap
+    legends_data = []
+    for name, cmap in colormaps.items():
+        layer_cfg = cfg_by_name.get(name, {})
+        fmt = layer_cfg.get("format_str", "{:.1f}")
+
+        hex_colors = [_rgba_to_hex(c) for c in cmap.colors]
+
+        try:
+            vmin_label = fmt.format(cmap.vmin)
+            vmax_label = fmt.format(cmap.vmax)
+        except (ValueError, KeyError):
+            vmin_label = str(cmap.vmin)
+            vmax_label = str(cmap.vmax)
+
+        legends_data.append({
+            "name": name,
+            "colors": hex_colors,
+            "vmin": vmin_label,
+            "vmax": vmax_label,
+        })
+
+    legends_json = json.dumps(legends_data)
+
+    js = f"""
+    (function() {{
+        var legendsData = {legends_json};
+
+        // Single combined control — all layer sections in one div.
+        var ctrl = L.control({{position: 'bottomright'}});
+        // Direct references: layerName -> section DOM element.
+        var sections = {{}};
+
+        ctrl.onAdd = function() {{
+            var container = L.DomUtil.create('div', 'info nfp-legend');
+            container.style.backgroundColor = 'white';
+            container.style.padding = '8px 12px';
+            container.style.borderRadius = '5px';
+            container.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
+            container.style.lineHeight = '1.4';
+            container.style.fontSize = '12px';
+            container.style.minWidth = '160px';
+            container.style.maxHeight = '400px';
+            container.style.overflowY = 'auto';
+
+            for (var i = 0; i < legendsData.length; i++) {{
+                var ld = legendsData[i];
+                var section = document.createElement('div');
+                section.setAttribute('data-layer-name', ld.name);
+                if (i > 0) {{
+                    section.style.marginTop = '8px';
+                    section.style.paddingTop = '8px';
+                    section.style.borderTop = '1px solid #eee';
+                }}
+
+                var gradient = ld.colors.join(', ');
+                section.innerHTML =
+                    '<div style="font-weight:600;margin-bottom:4px;">' +
+                        ld.name + '</div>' +
+                    '<div style="display:flex;align-items:center;gap:5px;">' +
+                        '<span style="white-space:nowrap;">' + ld.vmin +
+                        '</span>' +
+                        '<div style="flex:1;height:14px;' +
+                            'background:linear-gradient(to right,' +
+                            gradient + ');' +
+                            'border:1px solid #ccc;border-radius:2px;' +
+                            'min-width:100px;"></div>' +
+                        '<span style="white-space:nowrap;">' + ld.vmax +
+                        '</span>' +
+                    '</div>';
+
+                container.appendChild(section);
+                // Store direct reference — no querySelector needed.
+                sections[ld.name] = section;
+            }}
+
+            return container;
+        }};
+        ctrl.addTo({map_var});
+
+        // Toggle individual sections when layers are toggled via the
+        // in-map LayerControl (overlayadd / overlayremove).
+        {map_var}.on('overlayadd', function(e) {{
+            if (sections[e.name]) sections[e.name].style.display = '';
+        }});
+        {map_var}.on('overlayremove', function(e) {{
+            if (sections[e.name]) sections[e.name].style.display = 'none';
+        }});
+    }})();
+    """
+
+    # Wrap in DOMContentLoaded so it runs after all map init scripts.
+    # m.get_root().script renders our child before the map's own script
+    # children, so the map variable doesn't exist yet at parse time.
+    wrapped = f"document.addEventListener('DOMContentLoaded', function() {{{js}}});"
+    m.get_root().script.add_child(branca.element.Element(wrapped))
 
 
 def _error_map_html(geo: dict, map_cfg: dict, error_msg: str) -> str:

@@ -61,10 +61,10 @@ class TestConfigLoader:
     def test_get_geography(self):
         geo = config_loader.get_geography()
         assert geo["state_fips"] == "47"
-        assert geo["county_fips"] == "037"
-        assert geo["county_name"] == "Davidson County"
-        assert geo["map_center"] == [36.1627, -86.7816]
-        assert geo["default_zoom"] == 11
+        assert "msa_counties" in geo
+        assert len(geo["msa_counties"]) == 14
+        assert geo["map_center"] == [36.05, -86.60]
+        assert geo["default_zoom"] == 9
 
     def test_get_data_sources(self):
         sources = config_loader.get_data_sources()
@@ -120,7 +120,7 @@ class TestConfigLoader:
         display = config_loader.get_map_display()
         assert display["tiles"] == "cartodbpositron"
         assert "tile_attribution" in display
-        assert display["min_zoom"] == 10
+        assert display["min_zoom"] == 8
         assert display["max_zoom"] == 16
 
     def test_get_granularities(self):

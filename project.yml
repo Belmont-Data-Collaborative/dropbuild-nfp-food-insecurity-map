@@ -6,11 +6,39 @@ project:
 
 geography:
   state_fips: "47"
-  county_fips: "037"
-  county_name: "Davidson County"
   state_name: "Tennessee"
-  map_center: [36.1627, -86.7816]
-  default_zoom: 11
+  msa_name: "Nashville-Davidson-Murfreesboro-Franklin"
+  msa_counties:
+    - fips: "015"
+      name: "Cannon County"
+    - fips: "021"
+      name: "Cheatham County"
+    - fips: "037"
+      name: "Davidson County"
+    - fips: "043"
+      name: "Dickson County"
+    - fips: "081"
+      name: "Hickman County"
+    - fips: "111"
+      name: "Macon County"
+    - fips: "119"
+      name: "Maury County"
+    - fips: "147"
+      name: "Robertson County"
+    - fips: "149"
+      name: "Rutherford County"
+    - fips: "159"
+      name: "Smith County"
+    - fips: "165"
+      name: "Sumner County"
+    - fips: "169"
+      name: "Trousdale County"
+    - fips: "187"
+      name: "Williamson County"
+    - fips: "189"
+      name: "Wilson County"
+  map_center: [36.05, -86.60]
+  default_zoom: 9
   tiger_year: 2023
 
 data_sources:
@@ -79,6 +107,45 @@ data_sources:
         tooltip_alias: "Obesity"
         default_visible: false
 
+  usda_lila:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "nfp-mapping/usda/lila/tract/"
+    source_key: "nfp-mapping/usda/lila/source/food_access_research_atlas.csv"
+    crosswalk_key: "nfp-mapping/usda/lila/crosswalk/tract_2010_to_2020_tn.csv"
+    output_prefix: usda_lila
+    source_geoid_column: CensusTract
+    source_geoid_vintage: "2010"
+    target_geoid_vintage: "2020"
+    note: "LILA data uses 2010 Census tract boundaries. Converted to 2020 tracts via Census Bureau relationship file. Tract-level only (no ZIP aggregation)."
+    variables:
+      - column: LILATracts_1And10
+        display_name: "LILA Designation (1 & 10 mi)"
+        colormap: RdYlGn_r
+        legend_name: "Low Income + Low Access"
+        format_str: "{}"
+        tooltip_alias: "LILA"
+        default_visible: false
+        layer_type: categorical
+        categories:
+          0: "Not LILA"
+          1: "LILA Tract"
+      - column: lapop1
+        display_name: "Low Access Population (1 mi)"
+        colormap: YlOrRd
+        legend_name: "Population Beyond 1 mi from Supermarket"
+        format_str: "{:,.0f}"
+        tooltip_alias: "Low Access Pop"
+        default_visible: false
+      - column: lalowi1
+        display_name: "Low Income, Low Access Population (1 mi)"
+        colormap: YlOrRd
+        legend_name: "Low Income Pop Beyond 1 mi"
+        format_str: "{:,.0f}"
+        tooltip_alias: "LI Low Access Pop"
+        default_visible: false
+
 partners:
   source_type: s3
   s3_bucket: bdaic-public-transform
@@ -125,8 +192,9 @@ partners:
 map_display:
   tiles: cartodbpositron
   tile_attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-  min_zoom: 10
+  min_zoom: 8
   max_zoom: 16
+  simplify_tolerance: 0.001
   granularities:
     - id: tract
       label: "Census Tracts"

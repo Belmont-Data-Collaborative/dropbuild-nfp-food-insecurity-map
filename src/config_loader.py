@@ -81,3 +81,20 @@ def get_map_display() -> dict[str, Any]:
 def get_granularities() -> list[dict[str, Any]]:
     """Return list of granularity dicts (id, label, geo_file)."""
     return get_map_display()["granularities"]
+
+
+def get_county_fips_set() -> set[str]:
+    """Return set of 5-char state+county FIPS strings for all MSA counties.
+
+    Reads from ``msa_counties`` in project.yml. Falls back to the legacy
+    single ``county_fips`` field for backward compatibility.
+
+    Example return: ``{"47015", "47021", "47037", ...}``
+    """
+    geo = get_geography()
+    state = geo["state_fips"]
+    msa = geo.get("msa_counties")
+    if msa:
+        return {state + c["fips"] for c in msa}
+    # Legacy single-county fallback
+    return {state + geo["county_fips"]}

@@ -1,6 +1,6 @@
 """Download and process Census TIGER/Line geographic boundaries.
 
-Downloads tracts, ZCTAs (ZIP codes), and county boundary for Davidson County.
+Downloads tracts, ZCTAs (ZIP codes), and county/MSA boundaries.
 Reads geography config from project.yml.
 
 STANDALONE script — NO imports from src/ modules.
@@ -36,6 +36,18 @@ def load_geography_config() -> dict:
     with open(config_path, "r", encoding="utf-8") as f:
         cfg = yaml.safe_load(f)
     return cfg["geography"]
+
+
+def _get_county_fips_list(geo_cfg: dict) -> list[str]:
+    """Extract county FIPS codes from geography config.
+
+    Reads from msa_counties list if present (multi-county MSA mode).
+    Falls back to legacy single county_fips key for backward compatibility.
+    """
+    if "msa_counties" in geo_cfg:
+        return [c["fips"] for c in geo_cfg["msa_counties"]]
+    # Legacy single-county config
+    return [geo_cfg["county_fips"]]
 
 
 def download_and_extract(url: str, tmpdir: str) -> Path:
@@ -82,9 +94,10 @@ def fix_geometries(gdf: gpd.GeoDataFrame) -> gpd.GeoDataFrame:
 
 
 def process_tracts(geo_cfg: dict, output_dir: Path) -> gpd.GeoDataFrame:
-    """Download and process Census tract boundaries."""
+    """Download and process Census tract boundaries for all MSA counties."""
     state_fips = geo_cfg["state_fips"]
-    county_fips = geo_cfg["county_fips"]
+    county_fips_list = _get_county_fips_list(geo_cfg)
+    county_fips_set = set(county_fips_list)
     tiger_year = geo_cfg.get("tiger_year", 2023)
 
     url = (
@@ -92,25 +105,26 @@ def process_tracts(geo_cfg: dict, output_dir: Path) -> gpd.GeoDataFrame:
         f"/TRACT/tl_{tiger_year}_{state_fips}_tract.zip"
     )
 
-    print(f"Processing Census tracts for state {state_fips}...")
+    print(f"Processing Census tracts for state {state_fips}, "
+          f"{len(county_fips_list)} counties...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         extracted = download_and_extract(url, tmpdir)
         shp = find_shapefile(extracted)
         gdf = gpd.read_file(shp)
 
-    # Filter to county
-    gdf = gdf[gdf["COUNTYFP"] == county_fips].copy()
+    # Filter to MSA counties
+    gdf = gdf[gdf["COUNTYFP"].isin(county_fips_set)].copy()
     if len(gdf) == 0:
-        print(f"ERROR: No tracts found for county FIPS {county_fips}")
+        print(f"ERROR: No tracts found for county FIPS codes {county_fips_list}")
         sys.exit(1)
 
     tract_count = len(gdf)
-    if not (100 <= tract_count <= 400):
-        print(f"ERROR: Expected 100-400 tracts, got {tract_count}")
+    if not (100 <= tract_count <= 700):
+        print(f"ERROR: Expected 100-700 tracts, got {tract_count}")
         sys.exit(1)
 
-    print(f"  Found {tract_count} census tracts")
+    print(f"  Found {tract_count} census tracts across {len(county_fips_list)} counties")
 
     # Reproject to EPSG:4326
     gdf = gdf.to_crs(epsg=4326)
@@ -178,46 +192,73 @@ def process_zctas(geo_cfg: dict, output_dir: Path, county_gdf: gpd.GeoDataFrame 
     print(f"  Saved {zcta_count} ZCTAs to {output_path}")
 
 
-def process_county_boundary(geo_cfg: dict, output_dir: Path) -> gpd.GeoDataFrame:
-    """Download and extract county boundary polygon."""
+def process_county_boundaries(geo_cfg: dict, output_dir: Path) -> gpd.GeoDataFrame:
+    """Download and extract county boundary polygons for all MSA counties.
+
+    Saves two files:
+      - county_boundaries.geojson: all MSA counties as separate features
+      - msa_boundary.geojson: dissolved union of all counties
+    Returns the combined GeoDataFrame for ZCTA clipping.
+    """
     state_fips = geo_cfg["state_fips"]
-    county_fips = geo_cfg["county_fips"]
+    county_fips_list = _get_county_fips_list(geo_cfg)
+    county_fips_set = set(county_fips_list)
     tiger_year = geo_cfg.get("tiger_year", 2023)
+    msa_name = geo_cfg.get("msa_name", "MSA")
 
     url = (
         f"https://www2.census.gov/geo/tiger/TIGER{tiger_year}"
         f"/COUNTY/tl_{tiger_year}_us_county.zip"
     )
 
-    print(f"Processing county boundary for {state_fips}{county_fips}...")
+    print(f"Processing county boundaries for {msa_name} "
+          f"({len(county_fips_list)} counties)...")
 
     with tempfile.TemporaryDirectory() as tmpdir:
         extracted = download_and_extract(url, tmpdir)
         shp = find_shapefile(extracted)
         gdf = gpd.read_file(shp)
 
-    # Filter to our county
+    # Filter to MSA counties
     gdf = gdf[
-        (gdf["STATEFP"] == state_fips) & (gdf["COUNTYFP"] == county_fips)
+        (gdf["STATEFP"] == state_fips) & (gdf["COUNTYFP"].isin(county_fips_set))
     ].copy()
 
     if len(gdf) == 0:
-        print(f"ERROR: County {state_fips}{county_fips} not found")
+        print(f"ERROR: No counties found for state {state_fips}, "
+              f"FIPS codes {county_fips_list}")
         sys.exit(1)
+
+    found_count = len(gdf)
+    if found_count != len(county_fips_list):
+        missing = county_fips_set - set(gdf["COUNTYFP"].unique())
+        print(f"WARNING: Expected {len(county_fips_list)} counties, "
+              f"found {found_count}. Missing FIPS: {sorted(missing)}")
 
     gdf = gdf.to_crs(epsg=4326)
     gdf = fix_geometries(gdf)
 
-    output_path = output_dir / "county_boundary.geojson"
-    gdf.to_file(str(output_path), driver="GeoJSON")
-    print(f"  Saved county boundary to {output_path}")
+    # Save individual county boundaries
+    counties_path = output_dir / "county_boundaries.geojson"
+    gdf.to_file(str(counties_path), driver="GeoJSON")
+    print(f"  Saved {found_count} county boundaries to {counties_path}")
+
+    # Dissolve to single MSA boundary using unary_union (NOT union_all — see G002)
+    msa_boundary = gdf.geometry.unary_union
+    msa_gdf = gpd.GeoDataFrame(
+        {"NAME": [msa_name], "geometry": [msa_boundary]},
+        crs=gdf.crs,
+    )
+    msa_path = output_dir / "msa_boundary.geojson"
+    msa_gdf.to_file(str(msa_path), driver="GeoJSON")
+    print(f"  Saved MSA boundary to {msa_path}")
 
     return gdf
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Download and process geographic boundaries for Davidson County."
+        description="Download and process geographic boundaries for Nashville MSA."
     )
     parser.add_argument(
         "--output-dir",
@@ -236,12 +277,20 @@ def main() -> None:
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    print(f"Processing geographic data for {geo_cfg['county_name']}, {geo_cfg['state_name']}")
+    # Display area name — MSA or legacy single county
+    area_name = geo_cfg.get("msa_name")
+    if area_name:
+        county_fips_list = _get_county_fips_list(geo_cfg)
+        print(f"Processing geographic data for {area_name} MSA "
+              f"({len(county_fips_list)} counties), {geo_cfg['state_name']}")
+    else:
+        print(f"Processing geographic data for {geo_cfg['county_name']}, "
+              f"{geo_cfg['state_name']}")
     print(f"Output directory: {output_dir}")
     print()
 
-    # 1. County boundary
-    county_gdf = process_county_boundary(geo_cfg, output_dir)
+    # 1. County boundaries (individual + dissolved MSA boundary)
+    county_gdf = process_county_boundaries(geo_cfg, output_dir)
 
     # 2. Census tracts
     process_tracts(geo_cfg, output_dir)

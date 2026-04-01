@@ -151,11 +151,14 @@ def filter_by_county(
     county_fips: str,
     geoid_col: str = "GEOID",
     allowed_geoids: set[str] | None = None,
+    county_fips_set: set[str] | None = None,
 ) -> pd.DataFrame:
-    """Filter DataFrame to rows matching county.
+    """Filter DataFrame to rows matching county or MSA.
 
-    For tract-level data, matches by state+county FIPS prefix.
-    If allowed_geoids is provided (e.g. ZCTAs from geo file), filters to that set.
+    Uses three strategies in priority order:
+    1. allowed_geoids — exact GEOID match (ZCTAs from geo file)
+    2. county_fips_set — 5-char state+county prefix match (MSA multi-county)
+    3. state_fips + county_fips — single prefix match (legacy single-county)
     """
     if allowed_geoids is not None:
         mask = df[geoid_col].astype(str).isin(allowed_geoids)
@@ -163,6 +166,15 @@ def filter_by_county(
         logger.info(
             "Filtered %d -> %d rows using allowed GEOID set (%d IDs)",
             len(df), len(filtered), len(allowed_geoids),
+        )
+        return filtered
+
+    if county_fips_set is not None:
+        mask = df[geoid_col].astype(str).str[:5].isin(county_fips_set)
+        filtered = df[mask].copy()
+        logger.info(
+            "Filtered %d -> %d rows for %d-county MSA",
+            len(df), len(filtered), len(county_fips_set),
         )
         return filtered
 
@@ -313,9 +325,19 @@ def process_data_source(
         if geo_file:
             allowed_geoids = load_geoid_set_from_geofile(geo_file)
 
+    # Build multi-county FIPS set from msa_counties config (or fall back
+    # to single county_fips for legacy configs).
+    state_fips = geography["state_fips"]
+    msa = geography.get("msa_counties")
+    if msa:
+        county_fips_set = {state_fips + c["fips"] for c in msa}
+    else:
+        county_fips_set = None
+
     df = filter_by_county(
-        df, geography["state_fips"], geography["county_fips"],
+        df, state_fips, geography.get("county_fips", ""),
         allowed_geoids=allowed_geoids,
+        county_fips_set=county_fips_set,
     )
     df = replace_census_sentinels(df)
 
