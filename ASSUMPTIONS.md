@@ -67,4 +67,79 @@ with the same settings serve instantly from cache.
 
 ## A15: Geometry Simplification
 GeoJSON geometries are simplified with `simplify(0.001, preserve_topology=True)`
-during data loading to improve map rendering performance.
+during data loading to improve map rendering performance. The tolerance is
+configurable via `map_display.simplify_tolerance` in `project.yml`.
+
+## A16: Nashville MSA Geographic Scope
+The map covers the **Nashville-Davidson-Murfreesboro-Franklin Metropolitan
+Statistical Area** as defined by the U.S. Office of Management and Budget —
+14 Tennessee counties: Cannon, Cheatham, Davidson, Dickson, Hickman, Macon,
+Maury, Robertson, Rutherford, Smith, Sumner, Trousdale, Williamson, and
+Wilson. The county set lives in `project.yml` under `geography.msa_counties`
+and is the single source of truth for pipeline filtering and the Home page
+stats.
+
+## A17: USDA LILA Data Vintage and 2010→2020 Crosswalk
+USDA LILA data is published on **2019 ACS estimates with 2010 Census tract
+boundaries**, while the rest of the map uses 2020 boundaries. The pipeline
+applies the U.S. Census Bureau's official 2010-to-2020 Tract Relationship
+File to convert LILA values onto 2020 tract geometries:
+
+- Binary flags use **max() aggregation** (a 2020 tract inherits LILA if any
+  contributing 2010 tract was flagged) — a conservative, planning-friendly
+  approach.
+- Population counts use **area-weighted apportionment** with `OPP_TRACT_10`
+  and are returned as integers.
+- Rates use **area-weighted means**.
+- Tiny intersection slivers (`OPP_TRACT_10 < 0.01`) are filtered out.
+
+LILA values on the map should be treated as modeled approximations on 2020
+geography, not direct measurements. LILA is **tract-only** — the layer is
+disabled in the sidebar at ZIP granularity with a tooltip pointing the user
+back to the Census Tracts view.
+
+## A18: Giving Matters Integration is Activation-Ready
+The CFMT *Giving Matters* dataset has not yet been received. The pipeline
+step (`pipeline/process_giving_matters.py`) and the sidebar / map render
+path are wired but **deactivated**:
+
+- `data_sources.giving_matters.enabled: false` in `project.yml`
+- `process_giving_matters` returns `None` immediately when disabled, on
+  `NoSuchKey`/`NoSuchBucket`/`404`, or when `required_columns` are missing
+- The sidebar "Community Partners" section only renders when
+  `data/points/giving_matters.geojson` exists
+- The map renderer adds the Giving Matters layer only when both the file
+  exists AND the user checks the sidebar checkbox
+
+Activation requires only data + a config flip (no code changes). See the
+README "Enabling Giving Matters" section.
+
+## A19: County Boundaries Use Dashed Lines
+The 14 MSA county boundaries are rendered as a separate `FeatureGroup` with
+**dashed lines** (`dashArray: "5,5"`) and a transparent fill so they provide
+geographic orientation without visually competing with tract-level
+choropleth shading. The layer is on by default and toggleable via
+LayerControl.
+
+## A20: Categorical vs Continuous Layers
+Layer rendering branches on `layer_type` in `project.yml`:
+
+- **Continuous** (default) → branca `LinearColormap` with a gradient legend.
+- **Categorical** → discrete two-tone palette (`#EEEEEE` for 0/Not LILA,
+  `#B71C1C` for 1/LILA Tract) with discrete swatch legend entries.
+
+`config_loader.get_layer_type()` and `get_layer_categories()` expose this to
+the layer manager and the bottom-right legend builder, which renders both
+gradient and swatch sections in a single combined Leaflet control.
+
+## A21: Multi-Page Streamlit Structure
+The application is a multi-page Streamlit app:
+
+- `app.py` — Home page (cover/landing, project overview, dynamic stats bar,
+  navigation cards, branding, "data last updated" footer)
+- `pages/1_Map.py` — interactive Map page (all sidebar controls + map)
+- `pages/2_About_the_Data.py` — methodology, vintage, limitations
+
+The branded green-gradient hero lives only on Home; the Map page uses a
+lighter header with a granularity-aware breadcrumb subtitle. Each page calls
+`st.set_page_config(...)` as its first Streamlit call.
