@@ -6,6 +6,7 @@ Usage:
     python -m pipeline --step census_acs    # Process Census ACS only
     python -m pipeline --step health_lila   # Process CDC PLACES only
     python -m pipeline --step usda_lila     # Process USDA LILA data
+    python -m pipeline --step giving_matters # Process Giving Matters (graceful skip if disabled/missing)
     python -m pipeline --step partners      # Process partner data only
     python -m pipeline --inspect census_acs # Inspect a data source
 """
@@ -35,6 +36,7 @@ from src import config
 from pipeline.load_source import process_data_source
 from pipeline.process_partners import run as run_partners
 from pipeline.process_usda_lila import process_usda_lila
+from pipeline.process_giving_matters import process_giving_matters
 
 logger = logging.getLogger(__name__)
 
@@ -101,6 +103,15 @@ def run_usda_lila_step() -> None:
     process_usda_lila(sources["usda_lila"], geography)
 
 
+def run_giving_matters_step() -> None:
+    """Run the Giving Matters pipeline step (graceful skip when disabled)."""
+    sources = get_data_sources()
+    if "giving_matters" not in sources:
+        logger.info("giving_matters not configured in project.yml — skipping")
+        return
+    process_giving_matters(sources["giving_matters"])
+
+
 def run_partners_step() -> None:
     """Run partner data processing pipeline."""
     partner_config = get_partner_config()
@@ -142,7 +153,10 @@ def main() -> None:
     )
     parser.add_argument(
         "--step",
-        choices=["geo", "census_acs", "health_lila", "usda_lila", "partners"],
+        choices=[
+            "geo", "census_acs", "health_lila", "usda_lila",
+            "giving_matters", "partners",
+        ],
         help="Run a specific pipeline step",
     )
     parser.add_argument(
@@ -165,6 +179,8 @@ def main() -> None:
             run_partners_step()
         elif args.step == "usda_lila":
             run_usda_lila_step()
+        elif args.step == "giving_matters":
+            run_giving_matters_step()
         else:
             run_data_step(args.step)
         return
@@ -175,13 +191,16 @@ def main() -> None:
 
     sources = get_data_sources()
     for source_key in sources:
-        if source_key == "usda_lila":
-            # LILA uses its own crosswalk-based pipeline, not process_data_source
+        if source_key in ("usda_lila", "giving_matters"):
+            # These have their own dedicated pipeline steps below.
             continue
         run_data_step(source_key)
 
     # USDA LILA (separate crosswalk-based pipeline)
     run_usda_lila_step()
+
+    # Giving Matters (graceful skip when disabled / S3 key absent)
+    run_giving_matters_step()
 
     run_partners_step()
     logger.info("Full pipeline complete")
