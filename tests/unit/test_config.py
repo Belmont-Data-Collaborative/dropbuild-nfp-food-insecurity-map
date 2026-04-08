@@ -72,9 +72,9 @@ class TestConfigLoader:
         assert "health_lila" in sources
         assert sources["census_acs"]["s3_bucket"] == "bdaic-public-transform"
 
-    def test_get_all_layer_configs_returns_6_layers(self):
+    def test_get_all_layer_configs_returns_9_layers(self):
         layers = config_loader.get_all_layer_configs()
-        assert len(layers) == 6  # 3 census + 3 health
+        assert len(layers) == 9  # 3 census + 3 health + 3 USDA LILA
         columns = [layer["column"] for layer in layers]
         assert "DP03_0062E" in columns
         assert "DP03_0119PE" in columns
@@ -82,6 +82,9 @@ class TestConfigLoader:
         assert "DIABETES" in columns
         assert "BPHIGH" in columns
         assert "OBESITY" in columns
+        assert "LILATracts_1And10" in columns
+        assert "lapop1" in columns
+        assert "lalowi1" in columns
 
     def test_layer_configs_have_required_fields(self):
         required = {"column", "display_name", "colormap", "format_str"}
