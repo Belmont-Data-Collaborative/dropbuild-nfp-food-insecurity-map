@@ -83,6 +83,47 @@ def get_granularities() -> list[dict[str, Any]]:
     return get_map_display()["granularities"]
 
 
+def is_layer_available_for_granularity(
+    layer_config: dict[str, Any], granularity: str
+) -> bool:
+    """Return True if the layer's source publishes data at the given granularity.
+
+    Looks up the layer's ``source_key`` in ``data_sources`` and checks the
+    source's ``s3_prefix`` mapping. ZIP granularity matches either the
+    ``zip`` or ``zcta`` key (the two are used interchangeably across sources).
+    """
+    source_key = layer_config.get("source_key")
+    if source_key is None:
+        return True
+    sources = get_data_sources()
+    src = sources.get(source_key, {})
+    prefixes = src.get("s3_prefix", {})
+    if not prefixes:
+        # No granularity restrictions declared — assume available everywhere.
+        return True
+    if granularity == "zip":
+        return "zip" in prefixes or "zcta" in prefixes
+    return granularity in prefixes
+
+
+def get_layer_type(layer_config: dict[str, Any]) -> str:
+    """Return the layer rendering type: ``"categorical"`` or ``"continuous"``.
+
+    Defaults to ``"continuous"`` when ``layer_type`` is not present.
+    """
+    return layer_config.get("layer_type", "continuous")
+
+
+def get_layer_categories(layer_config: dict[str, Any]) -> dict[Any, str]:
+    """Return the ``categories`` mapping for a categorical layer.
+
+    For continuous layers (or layers with no categories defined) returns ``{}``.
+    """
+    if get_layer_type(layer_config) != "categorical":
+        return {}
+    return dict(layer_config.get("categories", {}))
+
+
 def get_county_fips_set() -> set[str]:
     """Return set of 5-char state+county FIPS strings for all MSA counties.
 

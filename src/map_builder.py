@@ -24,11 +24,23 @@ from src.layer_manager import (
     build_boundary_layer,
     build_choropleth_layer,
     build_county_boundaries_layer,
+    build_giving_matters_layer,
     build_partner_markers,
 )
 from src.partner_loader import load_partners
 
 logger = logging.getLogger(__name__)
+
+_GIVING_MATTERS_GEOJSON = Path("data/points/giving_matters.geojson")
+
+
+def _giving_matters_available() -> bool:
+    """Return True if data/points/giving_matters.geojson exists.
+
+    The path is resolved relative to the current working directory so the
+    Streamlit app and tests both pick up the live file.
+    """
+    return Path("data/points/giving_matters.geojson").exists()
 
 
 @st.cache_data(ttl=3600)
@@ -36,6 +48,7 @@ def build_map_html(
     granularity: str,
     show_partners: bool,
     selected_layers: tuple[str, ...],
+    show_giving_matters: bool = False,
 ) -> str:
     """Build a complete Folium map and return its HTML string.
 
@@ -105,6 +118,18 @@ def build_map_html(
         boundary_fg = build_boundary_layer(gdf)
         boundary_fg.add_to(m)
 
+    # Giving Matters circle markers (only when enabled by sidebar AND geojson exists)
+    if show_giving_matters and _giving_matters_available():
+        try:
+            from src.config_loader import get_data_sources
+
+            gm_cfg = get_data_sources().get("giving_matters", {})
+            gm_gdf = gpd.read_file(str(_GIVING_MATTERS_GEOJSON))
+            gm_fg = build_giving_matters_layer(gm_gdf, gm_cfg)
+            gm_fg.add_to(m)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            logger.warning("Could not render Giving Matters layer: %s", exc)
+
     # Partner markers
     if show_partners:
         try:
@@ -115,8 +140,9 @@ def build_map_html(
         except FileNotFoundError:
             logger.warning("Partner data not available")
 
-    # LayerControl
-    folium.LayerControl(collapsed=False).add_to(m)
+    # LayerControl — pinned to topleft so it never collides with the
+    # bottom-right legend stack when many overlays are active.
+    folium.LayerControl(position="topleft", collapsed=False).add_to(m)
 
     # Add legends at bottom-right (do NOT use cmap.add_to(m) — branca
     # hardcodes position: 'topright' and uses D3/SVG that breaks when
@@ -161,22 +187,39 @@ def _add_bottom_right_legends(
     for cfg in all_layer_configs:
         cfg_by_name[cfg["display_name"]] = cfg
 
-    # Build legend data for each colormap
+    # Build legend data for each layer. Two shapes:
+    #   continuous  -> {"kind": "continuous", "colors": [...], "vmin", "vmax"}
+    #   categorical -> {"kind": "categorical", "swatches": [{"color","label"}]}
+    from src.layer_manager import LegendInfo
+
     legends_data = []
-    for name, cmap in colormaps.items():
+    for name, legend in colormaps.items():
         layer_cfg = cfg_by_name.get(name, {})
         fmt = layer_cfg.get("format_str", "{:.1f}")
 
-        hex_colors = [_rgba_to_hex(c) for c in cmap.colors]
+        if isinstance(legend, LegendInfo) and legend.categories is not None:
+            swatches = [
+                {"color": color, "label": label}
+                for _value, (color, label) in legend.categories.items()
+            ]
+            legends_data.append({
+                "kind": "categorical",
+                "name": name,
+                "swatches": swatches,
+            })
+            continue
 
+        # Continuous (branca LinearColormap)
+        hex_colors = [_rgba_to_hex(c) for c in legend.colors]
         try:
-            vmin_label = fmt.format(cmap.vmin)
-            vmax_label = fmt.format(cmap.vmax)
+            vmin_label = fmt.format(legend.vmin)
+            vmax_label = fmt.format(legend.vmax)
         except (ValueError, KeyError):
-            vmin_label = str(cmap.vmin)
-            vmax_label = str(cmap.vmax)
+            vmin_label = str(legend.vmin)
+            vmax_label = str(legend.vmax)
 
         legends_data.append({
+            "kind": "continuous",
             "name": name,
             "colors": hex_colors,
             "vmin": vmin_label,
@@ -216,21 +259,40 @@ def _add_bottom_right_legends(
                     section.style.borderTop = '1px solid #eee';
                 }}
 
-                var gradient = ld.colors.join(', ');
-                section.innerHTML =
-                    '<div style="font-weight:600;margin-bottom:4px;">' +
-                        ld.name + '</div>' +
-                    '<div style="display:flex;align-items:center;gap:5px;">' +
-                        '<span style="white-space:nowrap;">' + ld.vmin +
-                        '</span>' +
-                        '<div style="flex:1;height:14px;' +
-                            'background:linear-gradient(to right,' +
-                            gradient + ');' +
-                            'border:1px solid #ccc;border-radius:2px;' +
-                            'min-width:100px;"></div>' +
-                        '<span style="white-space:nowrap;">' + ld.vmax +
-                        '</span>' +
-                    '</div>';
+                if (ld.kind === 'categorical') {{
+                    var swatchHtml = '';
+                    for (var j = 0; j < ld.swatches.length; j++) {{
+                        var sw = ld.swatches[j];
+                        swatchHtml +=
+                            '<div style="display:flex;align-items:center;' +
+                                'gap:6px;margin:2px 0;">' +
+                                '<span style="display:inline-block;width:14px;' +
+                                    'height:14px;background:' + sw.color + ';' +
+                                    'border:1px solid #ccc;' +
+                                    'border-radius:2px;"></span>' +
+                                '<span>' + sw.label + '</span>' +
+                            '</div>';
+                    }}
+                    section.innerHTML =
+                        '<div style="font-weight:600;margin-bottom:4px;">' +
+                            ld.name + '</div>' + swatchHtml;
+                }} else {{
+                    var gradient = ld.colors.join(', ');
+                    section.innerHTML =
+                        '<div style="font-weight:600;margin-bottom:4px;">' +
+                            ld.name + '</div>' +
+                        '<div style="display:flex;align-items:center;gap:5px;">' +
+                            '<span style="white-space:nowrap;">' + ld.vmin +
+                            '</span>' +
+                            '<div style="flex:1;height:14px;' +
+                                'background:linear-gradient(to right,' +
+                                gradient + ');' +
+                                'border:1px solid #ccc;border-radius:2px;' +
+                                'min-width:100px;"></div>' +
+                            '<span style="white-space:nowrap;">' + ld.vmax +
+                            '</span>' +
+                        '</div>';
+                }}
 
                 container.appendChild(section);
                 // Store direct reference — no querySelector needed.

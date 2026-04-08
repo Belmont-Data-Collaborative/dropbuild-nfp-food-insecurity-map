@@ -20,6 +20,38 @@ from src.config_loader import get_all_layer_configs, get_data_sources, get_granu
 logger = logging.getLogger(__name__)
 
 
+def _coerce_to_polygonal(geom):
+    """Convert a GeometryCollection to a (Multi)Polygon by extracting only
+    its polygon parts. Non-collection geometries are returned unchanged.
+
+    Folium's GeoJsonTooltip / GeoJsonPopup do not render GeometryCollection
+    features and emit a runtime JS error that breaks Leaflet's LayerControl
+    (and thus the visible CartoDB Positron basemap). Some ZCTA shapefiles
+    contain GeometryCollections (a polygon plus stray lines/points along the
+    boundary); we strip the non-polygon members so the layer renders cleanly.
+    """
+    if geom is None:
+        return None
+    if geom.geom_type != "GeometryCollection":
+        return geom
+
+    from shapely.geometry import MultiPolygon
+
+    polys = []
+    for part in geom.geoms:
+        if part.is_empty:
+            continue
+        if part.geom_type == "Polygon":
+            polys.append(part)
+        elif part.geom_type == "MultiPolygon":
+            polys.extend(part.geoms)
+    if not polys:
+        return None
+    if len(polys) == 1:
+        return polys[0]
+    return MultiPolygon(polys)
+
+
 class DataLoadError(Exception):
     """Raised when data cannot be loaded."""
 
@@ -58,6 +90,11 @@ def load_geodata(granularity: str) -> gpd.GeoDataFrame:
 
     # Load GeoJSON
     gdf = gpd.read_file(str(geo_path))
+
+    # Strip GeometryCollection wrappers (Folium tooltips/popups can't render
+    # them and the resulting JS error breaks Leaflet's LayerControl + basemap).
+    gdf["geometry"] = gdf.geometry.apply(_coerce_to_polygonal)
+    gdf = gdf[gdf.geometry.notna()].copy()
 
     # Simplify geometries for performance (configurable via project.yml)
     tolerance = get_map_display().get("simplify_tolerance", 0.001)

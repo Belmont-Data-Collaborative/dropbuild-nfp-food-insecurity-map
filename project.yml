@@ -87,7 +87,7 @@ data_sources:
     variables:
       - column: DIABETES
         display_name: "Diabetes Prevalence"
-        colormap: YlOrRd
+        colormap: PuRd
         legend_name: "Diabetes Prevalence (%)"
         format_str: "{:.1f}%"
         tooltip_alias: "Diabetes"
@@ -133,18 +133,35 @@ data_sources:
           1: "LILA Tract"
       - column: lapop1
         display_name: "Low Access Population (1 mi)"
-        colormap: YlOrRd
+        colormap: BuPu
         legend_name: "Population Beyond 1 mi from Supermarket"
         format_str: "{:,.0f}"
         tooltip_alias: "Low Access Pop"
         default_visible: false
       - column: lalowi1
         display_name: "Low Income, Low Access Population (1 mi)"
-        colormap: YlOrRd
+        colormap: YlOrBr
         legend_name: "Low Income Pop Beyond 1 mi"
         format_str: "{:,.0f}"
         tooltip_alias: "LI Low Access Pop"
         default_visible: false
+
+  giving_matters:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_key: "nfp-mapping/partners/giving_matters.csv"
+    output_prefix: giving_matters
+    enabled: false  # Set to true once data is uploaded to S3
+    note: "Giving Matters nonprofit data from CFMT. Schema TBD — enable after data receipt and column mapping."
+    # Column mapping will be added here once the schema is known:
+    # required_columns:
+    #   name_column: TBD
+    #   address_column: TBD
+    #   category_column: TBD
+    geocode_cache_key: "nfp-mapping/partners/giving_matters_geocode_cache.csv"
+    point_layer_name: "Community Partners (Giving Matters)"
+    marker_style: "circle"  # Use circle markers to distinguish from NFP partner pins
+    default_color: "#17BECF"
 
 partners:
   source_type: s3
