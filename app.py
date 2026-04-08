@@ -1,7 +1,7 @@
-"""NFP Food Insecurity Map — Streamlit Application.
+"""NFP Food Insecurity Map — Home Page (multi-page app entry point).
 
-Interactive food insecurity mapping tool for the Nashville Food Project
-and Belmont University's BDAIC.
+Per spec_updates_2.md §4.2, this is the cover/landing page for the
+multi-page Streamlit application. Map functionality lives in pages/1_Map.py.
 """
 from __future__ import annotations
 
@@ -9,19 +9,19 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
 
 import streamlit as st
-import streamlit.components.v1 as components
 
 from src import config
 from src.config_loader import (
     get_all_layer_configs,
-    get_granularities,
-    get_partner_config,
+    get_geography,
     get_project,
 )
-from src.map_builder import build_map_html
 
 # Configure logging
 logging.basicConfig(
@@ -32,7 +32,7 @@ logger = logging.getLogger(__name__)
 
 
 def _configure_page() -> None:
-    """Set Streamlit page config. Must be first Streamlit call."""
+    """Set Streamlit page config. Must be the first Streamlit call."""
     st.set_page_config(
         page_title="NFP Food Insecurity Map",
         page_icon="\U0001f5fa\ufe0f",
@@ -42,64 +42,73 @@ def _configure_page() -> None:
 
 
 def _inject_custom_css() -> None:
-    """Inject custom CSS for branded styling."""
+    """Inject custom CSS for the branded landing page."""
     st.markdown(
         """
     <style>
-    /* Branded header bar */
-    .main-header {
+    .home-hero {
         background: linear-gradient(135deg, #2E7D32, #1B5E20);
         color: white;
-        padding: 1rem 1.5rem;
-        border-radius: 8px;
-        margin-bottom: 1rem;
+        padding: 2.5rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 1.5rem;
     }
-    .main-header h1 { margin: 0; font-size: 1.6rem; }
-    .main-header p { margin: 0.25rem 0 0; opacity: 0.9; font-size: 0.9rem; }
-
-    /* Sidebar section headers */
-    .sidebar-section {
-        font-size: 0.85rem;
-        font-weight: 600;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        color: #666;
-        margin: 1.2rem 0 0.5rem;
-        padding-bottom: 0.3rem;
-        border-bottom: 1px solid #eee;
+    .home-hero h1 {
+        margin: 0;
+        font-size: 2.4rem;
+        font-weight: 700;
     }
-
-    /* Partner legend items */
-    .legend-item {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-        padding: 4px 0;
-        font-size: 0.85rem;
+    .home-hero p.subtitle {
+        margin: 0.5rem 0 0;
+        opacity: 0.92;
+        font-size: 1.1rem;
     }
-    .legend-dot {
-        width: 12px;
-        height: 12px;
-        border-radius: 50%;
-        flex-shrink: 0;
-        border: 1px solid rgba(0,0,0,0.15);
+    .home-description {
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: #333;
+        max-width: 900px;
+        margin: 0 auto 1.5rem;
+        text-align: center;
     }
-
-    /* Map container */
-    iframe {
+    .nav-card {
+        background: white;
         border: 1px solid #e0e0e0;
+        border-left: 4px solid #2E7D32;
         border-radius: 8px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
     }
-
-    /* Data source badges */
-    .source-badge {
-        display: inline-block;
-        background: #f0f2f6;
-        border-radius: 4px;
-        padding: 2px 8px;
-        font-size: 0.75rem;
-        color: #555;
-        margin: 2px;
+    .nav-card h3 { margin: 0 0 0.4rem; color: #1B5E20; font-size: 1.15rem; }
+    .nav-card p  { margin: 0; color: #555; font-size: 0.92rem; }
+    .stats-bar {
+        background: #f7f9f7;
+        border: 1px solid #e0e8e0;
+        border-radius: 8px;
+        padding: 1rem 1.5rem;
+        margin: 1.5rem 0;
+        text-align: center;
+        font-size: 0.95rem;
+        color: #444;
+    }
+    .stats-bar strong { color: #1B5E20; }
+    .branding-row {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+        margin: 1.5rem 0 0.5rem;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .branding-row .org { font-weight: 600; color: #444; }
+    .freshness {
+        text-align: center;
+        font-size: 0.82rem;
+        color: #888;
+        margin-top: 0.5rem;
     }
     </style>
     """,
@@ -107,147 +116,167 @@ def _inject_custom_css() -> None:
     )
 
 
-def _render_header() -> None:
-    """Render branded header bar."""
+def _gather_key_stats() -> dict[str, int | str]:
+    """Compute dynamic stats for the landing-page summary bar."""
+    geo = get_geography()
+    counties = len(geo.get("msa_counties", [])) or 1
+
+    tracts = 0
+    tracts_path = Path("data/geo/tracts.geojson")
+    if tracts_path.exists():
+        try:
+            with open(tracts_path, "r", encoding="utf-8") as f:
+                tracts = len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            tracts = 0
+
+    indicators = len(get_all_layer_configs())
+
+    partners = 0
+    partners_path = Path("data/points/partners.geojson")
+    if partners_path.exists():
+        try:
+            with open(partners_path, "r", encoding="utf-8") as f:
+                partners = len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            partners = 0
+
+    return {
+        "counties": counties,
+        "tracts": tracts,
+        "indicators": indicators,
+        "partners": partners,
+    }
+
+
+def _last_pipeline_run() -> str:
+    """Return the most recent mtime among the choropleth parquet outputs."""
+    parquet_dir = Path("data/choropleth")
+    if not parquet_dir.exists():
+        return "unknown"
+    files = list(parquet_dir.glob("*.parquet"))
+    if not files:
+        return "unknown"
+    latest = max(f.stat().st_mtime for f in files)
+    return datetime.fromtimestamp(latest).strftime("%Y-%m-%d")
+
+
+def _render_hero() -> None:
     project = get_project()
     st.markdown(
         f"""
-    <div class="main-header">
-        <h1>{project['name']}</h1>
-        <p>{project['primary_org']} &middot; {project['secondary_org']}
-        &middot; Davidson County, TN</p>
-    </div>
-    """,
+        <div class="home-hero">
+            <h1>{project['name']}</h1>
+            <p class="subtitle">A strategic planning tool for the Nashville Food Project</p>
+        </div>
+        """,
         unsafe_allow_html=True,
     )
 
 
-def _render_partner_legend() -> None:
-    """Render partner type legend with colored dots."""
-    partner_cfg = get_partner_config()
-    for type_key, type_info in partner_cfg["types"].items():
+def _render_description() -> None:
+    st.markdown(
+        """
+        <div class="home-description">
+            This interactive mapping tool helps the Nashville Food Project and
+            its partners understand where food insecurity is concentrated across
+            the 14-county Nashville metropolitan area. It overlays Census income
+            and poverty data, CDC health indicators, USDA food-access measures,
+            and existing NFP partner locations to support data-informed decisions
+            about where to grow the partner network.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_stats_bar() -> None:
+    stats = _gather_key_stats()
+    st.markdown(
+        f"""
+        <div class="stats-bar">
+            Covering <strong>{stats['counties']}</strong> counties &middot;
+            <strong>{stats['tracts']:,}</strong> census tracts &middot;
+            <strong>{stats['indicators']}</strong> data indicators &middot;
+            <strong>{stats['partners']}</strong> NFP partner locations
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_nav_cards() -> None:
+    col1, col2 = st.columns(2)
+
+    with col1:
         st.markdown(
-            f'<div class="legend-item">'
-            f'<span class="legend-dot" style="background-color: '
-            f'{type_info["color"]};"></span>'
-            f'{type_info["label"]}'
-            f"</div>",
+            """
+            <div class="nav-card">
+                <h3>\U0001f5fa\ufe0f  Interactive Map</h3>
+                <p>Explore food insecurity indicators across the Nashville MSA
+                with toggleable layers, partner locations, and choropleth views
+                at tract or ZIP-code granularity.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
+        try:
+            st.page_link("pages/1_Map.py", label="Open the Map", icon="\u27a1\ufe0f")
+        except Exception:
+            st.caption("Open the **Map** page from the sidebar.")
 
-
-def _render_data_freshness() -> None:
-    """Render data source badges with vintage info."""
-    sources = [
-        ("Census ACS", "American Community Survey 2020-2024 5-Year Estimates"),
-        ("CDC PLACES", "CDC PLACES 2024 Model-Based Estimates"),
-        ("Partners", "Nashville Food Project Partner Directory"),
-    ]
-    for name, desc in sources:
+    with col2:
         st.markdown(
-            f'<span class="source-badge">{name}</span> {desc}',
+            """
+            <div class="nav-card">
+                <h3>\U0001f4d6  About the Data</h3>
+                <p>Methodology, vintage dates, and source documentation for every
+                dataset shown on the map &mdash; including the LILA 2010\u219220 tract
+                conversion and known limitations.</p>
+            </div>
+            """,
             unsafe_allow_html=True,
         )
+        try:
+            st.page_link(
+                "pages/2_About_the_Data.py",
+                label="View Data Documentation",
+                icon="\u27a1\ufe0f",
+            )
+        except Exception:
+            st.caption("Open the **About the Data** page from the sidebar.")
 
 
-def _render_sidebar() -> tuple[str, bool, list[str]]:
-    """Render sidebar controls and return user selections.
-
-    Returns:
-        Tuple of (granularity, show_partners, selected_layers).
-    """
-    with st.sidebar:
-        # Geographic Level
-        st.markdown(
-            '<div class="sidebar-section">Geographic Level</div>',
-            unsafe_allow_html=True,
-        )
-        granularities = get_granularities()
-        granularity = st.radio(
-            "Select geographic level",
-            options=[g["id"] for g in granularities],
-            format_func=lambda x: next(
-                g["label"] for g in granularities if g["id"] == x
-            ),
-            horizontal=True,
-            label_visibility="collapsed",
-        )
-
-        # Data Layers
-        st.markdown(
-            '<div class="sidebar-section">Data Layers</div>',
-            unsafe_allow_html=True,
-        )
-        all_layers = get_all_layer_configs()
-        selected_layers: list[str] = []
-        for layer in all_layers:
-            if st.checkbox(
-                layer["display_name"],
-                value=layer.get("default_visible", False),
-                key=f"layer_{layer['column']}",
-            ):
-                selected_layers.append(layer["column"])
-
-        # Partner Locations
-        st.markdown(
-            '<div class="sidebar-section">Partner Locations</div>',
-            unsafe_allow_html=True,
-        )
-        show_partners = st.checkbox("Show NFP Partners", value=True)
-
-        if show_partners:
-            _render_partner_legend()
-
-        # Export placeholder
-        st.markdown(
-            '<div class="sidebar-section">Export</div>',
-            unsafe_allow_html=True,
-        )
-        export_placeholder = st.empty()
-
-        # Data Sources
-        st.markdown(
-            '<div class="sidebar-section">Data Sources</div>',
-            unsafe_allow_html=True,
-        )
-        _render_data_freshness()
-
-    return granularity, show_partners, selected_layers
-
-
-def _render_map(
-    granularity: str,
-    show_partners: bool,
-    selected_layers: list[str],
-) -> None:
-    """Render the Folium map and export button."""
-    with st.spinner("Building map..."):
-        map_html = build_map_html(
-            granularity, show_partners, tuple(selected_layers)
-        )
-
-    components.html(map_html, height=700, scrolling=False)
-
-    # Export button in sidebar
-    with st.sidebar:
-        st.download_button(
-            label="\u2b07 Download Map as HTML",
-            data=map_html,
-            file_name="nfp_food_insecurity_map.html",
-            mime="text/html",
-        )
+def _render_branding_and_freshness() -> None:
+    project = get_project()
+    primary = project.get("primary_org", "Nashville Food Project")
+    secondary = project.get("secondary_org", "Belmont University BDAIC")
+    st.markdown(
+        f"""
+        <div class="branding-row">
+            <div class="org">{primary}</div>
+            <div>&middot;</div>
+            <div class="org">{secondary}</div>
+        </div>
+        <div class="freshness">Data last updated: {_last_pipeline_run()}</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def main() -> None:
-    """Application entry point."""
+    """Render the Home page."""
     _configure_page()
     _inject_custom_css()
-    _render_header()
-
-    granularity, show_partners, selected_layers = _render_sidebar()
-
-    _render_map(granularity, show_partners, selected_layers)
+    _render_hero()
+    _render_description()
+    _render_stats_bar()
+    _render_nav_cards()
+    _render_branding_and_freshness()
 
 
 if __name__ == "__main__":
+    main()
+else:
+    # Streamlit executes the script top-to-bottom; call main() unconditionally.
     main()
