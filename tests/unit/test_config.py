@@ -1,157 +1,137 @@
+"""Unit tests for src/config.py and src/config_loader.py."""
 from __future__ import annotations
-
-"""Unit tests for src/config.py."""
 
 import os
 import sys
 from unittest.mock import MagicMock
 
-# Mock streamlit before importing src modules so config.py can load
-# without a running Streamlit server.
+# Mock streamlit before importing src modules
 _st_mock = MagicMock()
 _st_mock.cache_data = lambda f=None, **kwargs: f if f else lambda g: g
 _st_mock.cache_resource = lambda f=None, **kwargs: f if f else lambda g: g
 _st_mock.secrets = {}
 sys.modules.setdefault("streamlit", _st_mock)
-
-# Also mock optional deps that config.py does NOT import but guards against
-# side-effects from other test imports.
 sys.modules.setdefault("streamlit_folium", MagicMock())
 
 from src import config  # noqa: E402
+from src import config_loader  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# Test: module imports without error
+# Test: config module
 # ---------------------------------------------------------------------------
 def test_config_imports():
-    """config module should import cleanly."""
     assert config is not None
 
 
-# ---------------------------------------------------------------------------
-# Test: required constants exist
-# ---------------------------------------------------------------------------
-class TestRequiredConstants:
-    def test_aws_bucket_name_exists(self):
-        assert hasattr(config, "AWS_BUCKET_NAME")
+class TestConfigConstants:
+    def test_app_env_exists(self):
+        assert isinstance(config.APP_ENV, str)
 
-    def test_s3_keys(self):
-        assert hasattr(config, "S3_PARTNERS_KEY")
-        assert hasattr(config, "S3_CENSUS_KEY")
-        assert hasattr(config, "S3_CDC_PLACES_KEY")
-        assert hasattr(config, "S3_GEOCODE_CACHE_KEY")
+    def test_is_production_flag(self):
+        assert isinstance(config.IS_PRODUCTION, bool)
 
-    def test_csv_column_lists(self):
-        assert isinstance(config.PARTNERS_CSV_COLUMNS, list)
-        assert isinstance(config.CENSUS_CSV_COLUMNS, list)
-        assert isinstance(config.CDC_PLACES_CSV_COLUMNS, list)
+    def test_log_level_set(self):
+        assert isinstance(config.LOG_LEVEL, int)
 
-    def test_partner_type_colors_has_8_entries(self):
-        assert isinstance(config.PARTNER_TYPE_COLORS, dict)
-        assert len(config.PARTNER_TYPE_COLORS) == 8
+    def test_aws_bucket_name_type(self):
+        assert isinstance(config.AWS_BUCKET_NAME, str)
 
-    def test_partner_type_labels_has_8_entries(self):
-        assert isinstance(config.PARTNER_TYPE_LABELS, dict)
-        assert len(config.PARTNER_TYPE_LABELS) == 8
-
-    def test_partner_type_colors_keys_match_labels_keys(self):
-        assert set(config.PARTNER_TYPE_COLORS.keys()) == set(
-            config.PARTNER_TYPE_LABELS.keys()
-        )
-
-    def test_fallback_color(self):
-        assert config.FALLBACK_COLOR == "#CCCCCC"
-
-    def test_default_choropleth_layer(self):
-        assert config.DEFAULT_CHOROPLETH_LAYER == "median_income"
-
-    def test_davidson_center(self):
-        assert isinstance(config.DAVIDSON_CENTER, list)
-        assert len(config.DAVIDSON_CENTER) == 2
-        assert all(isinstance(v, (int, float)) for v in config.DAVIDSON_CENTER)
-
-    def test_default_zoom(self):
-        assert isinstance(config.DEFAULT_ZOOM, int)
-        assert config.DEFAULT_ZOOM == 11
-
-    def test_cdc_places_indicator_column(self):
-        assert config.CDC_PLACES_INDICATOR_COLUMN == "DIABETES_CrudePrev"
-
-    def test_geojson_path(self):
-        assert hasattr(config, "GEOJSON_PATH")
-        assert isinstance(config.GEOJSON_PATH, str)
-
-    def test_mock_data_dir(self):
-        assert hasattr(config, "MOCK_DATA_DIR")
-
-    def test_use_mock_data(self):
-        assert hasattr(config, "USE_MOCK_DATA")
+    def test_mock_data_settings(self):
+        assert isinstance(config.MOCK_DATA_DIR, str)
         assert isinstance(config.USE_MOCK_DATA, bool)
 
     def test_error_message_constants(self):
-        assert hasattr(config, "ERROR_DATA_LOAD")
-        assert hasattr(config, "ERROR_MISSING_COLUMN")
-        assert hasattr(config, "WARNING_GEOCODE_FAILURES")
-        assert hasattr(config, "WARNING_NO_GEOID_MATCH")
+        assert "could not be loaded" in config.ERROR_DATA_LOAD
+        assert "{column_name}" in config.ERROR_MISSING_COLUMN
+        assert "{count}" in config.WARNING_GEOCODE_FAILURES
+        assert "map boundaries" in config.WARNING_NO_GEOID_MATCH
 
 
 # ---------------------------------------------------------------------------
-# Test: CHOROPLETH_LAYERS structure
+# Test: config_loader module (YAML)
 # ---------------------------------------------------------------------------
-class TestChoroplethLayers:
-    REQUIRED_KEYS = {
-        "id",
-        "display_name",
-        "csv_source",
-        "csv_column",
-        "unit_label",
-        "format_string",
-        "data_vintage_key",
-    }
+class TestConfigLoader:
+    def test_get_project(self):
+        project = config_loader.get_project()
+        assert project["name"] == "NFP Food Insecurity Map"
+        assert project["primary_org"] == "Nashville Food Project"
+        assert project["secondary_org"] == "BDAIC"
 
-    def test_choropleth_layers_is_list(self):
-        assert isinstance(config.CHOROPLETH_LAYERS, list)
-        assert len(config.CHOROPLETH_LAYERS) >= 1
+    def test_get_geography(self):
+        geo = config_loader.get_geography()
+        assert geo["state_fips"] == "47"
+        assert "msa_counties" in geo
+        assert len(geo["msa_counties"]) == 14
+        assert geo["map_center"] == [36.05, -86.60]
+        assert geo["default_zoom"] == 9
 
-    def test_each_layer_has_required_keys(self):
-        for layer in config.CHOROPLETH_LAYERS:
-            missing = self.REQUIRED_KEYS - set(layer.keys())
-            assert not missing, f"Layer {layer.get('id', '?')} missing keys: {missing}"
+    def test_get_data_sources(self):
+        sources = config_loader.get_data_sources()
+        assert "census_acs" in sources
+        assert "health_lila" in sources
+        assert sources["census_acs"]["s3_bucket"] == "bdaic-public-transform"
 
-    def test_layer_ids_are_unique(self):
-        ids = [layer["id"] for layer in config.CHOROPLETH_LAYERS]
-        assert len(ids) == len(set(ids))
+    def test_get_all_layer_configs_returns_9_layers(self):
+        layers = config_loader.get_all_layer_configs()
+        assert len(layers) == 9  # 3 census + 3 health + 3 USDA LILA
+        columns = [layer["column"] for layer in layers]
+        assert "DP03_0062E" in columns
+        assert "DP03_0119PE" in columns
+        assert "DP05_0001E" in columns
+        assert "DIABETES" in columns
+        assert "BPHIGH" in columns
+        assert "OBESITY" in columns
+        assert "LILATracts_1And10" in columns
+        assert "lapop1" in columns
+        assert "lalowi1" in columns
 
-    def test_default_layer_id_exists(self):
-        ids = [layer["id"] for layer in config.CHOROPLETH_LAYERS]
-        assert config.DEFAULT_CHOROPLETH_LAYER in ids
+    def test_layer_configs_have_required_fields(self):
+        required = {"column", "display_name", "colormap", "format_str"}
+        for layer in config_loader.get_all_layer_configs():
+            missing = required - set(layer.keys())
+            assert not missing, f"Layer {layer.get('column')} missing: {missing}"
 
+    def test_get_partner_config(self):
+        cfg = config_loader.get_partner_config()
+        assert "types" in cfg
+        assert len(cfg["types"]) == 8
+        for key in ["school_summer", "medical_health", "transitional_housing",
+                     "senior_services", "community_development", "homeless_outreach",
+                     "workforce_development", "after_school"]:
+            assert key in cfg["types"]
+            assert "color" in cfg["types"][key]
+            assert "label" in cfg["types"][key]
+            assert "icon" in cfg["types"][key]
 
-# ---------------------------------------------------------------------------
-# Test: specific color values from spec
-# ---------------------------------------------------------------------------
-class TestPartnerTypeColors:
-    def test_school_summer_color(self):
-        assert config.PARTNER_TYPE_COLORS["school_summer"] == "#E41A1C"
+    def test_partner_type_colors_match_spec(self):
+        cfg = config_loader.get_partner_config()
+        expected = {
+            "school_summer": "#E41A1C",
+            "medical_health": "#377EB8",
+            "transitional_housing": "#4DAF4A",
+            "senior_services": "#984EA3",
+            "community_development": "#FF7F00",
+            "homeless_outreach": "#A65628",
+            "workforce_development": "#F781BF",
+            "after_school": "#999999",
+        }
+        for key, color in expected.items():
+            assert cfg["types"][key]["color"] == color
 
-    def test_medical_health_color(self):
-        assert config.PARTNER_TYPE_COLORS["medical_health"] == "#377EB8"
+    def test_get_map_display(self):
+        display = config_loader.get_map_display()
+        assert display["tiles"] == "cartodbpositron"
+        assert "tile_attribution" in display
+        assert display["min_zoom"] == 8
+        assert display["max_zoom"] == 16
 
-    def test_transitional_housing_color(self):
-        assert config.PARTNER_TYPE_COLORS["transitional_housing"] == "#4DAF4A"
-
-    def test_senior_services_color(self):
-        assert config.PARTNER_TYPE_COLORS["senior_services"] == "#984EA3"
-
-    def test_community_development_color(self):
-        assert config.PARTNER_TYPE_COLORS["community_development"] == "#FF7F00"
-
-    def test_homeless_outreach_color(self):
-        assert config.PARTNER_TYPE_COLORS["homeless_outreach"] == "#A65628"
-
-    def test_workforce_development_color(self):
-        assert config.PARTNER_TYPE_COLORS["workforce_development"] == "#F781BF"
-
-    def test_after_school_color(self):
-        assert config.PARTNER_TYPE_COLORS["after_school"] == "#999999"
+    def test_get_granularities(self):
+        grans = config_loader.get_granularities()
+        assert len(grans) == 2
+        ids = [g["id"] for g in grans]
+        assert "tract" in ids
+        assert "zip" in ids
+        for g in grans:
+            assert "label" in g
+            assert "geo_file" in g

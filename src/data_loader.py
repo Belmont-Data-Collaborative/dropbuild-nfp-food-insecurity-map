@@ -1,142 +1,171 @@
+"""Data loading layer for the Streamlit app.
+
+Loads pre-built Parquet files (from pipeline output) and GeoJSON boundaries.
+Supports multi-granularity (tract / zip).
+"""
 from __future__ import annotations
 
-import io
 import json
-import os
+import logging
 from pathlib import Path
+from typing import Any
 
-import boto3
+import geopandas as gpd
 import pandas as pd
 import streamlit as st
 
 from src import config
+from src.config_loader import get_all_layer_configs, get_data_sources, get_granularities, get_map_display
+
+logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Custom exceptions
-# ---------------------------------------------------------------------------
+def _coerce_to_polygonal(geom):
+    """Convert a GeometryCollection to a (Multi)Polygon by extracting only
+    its polygon parts. Non-collection geometries are returned unchanged.
+
+    Folium's GeoJsonTooltip / GeoJsonPopup do not render GeometryCollection
+    features and emit a runtime JS error that breaks Leaflet's LayerControl
+    (and thus the visible CartoDB Positron basemap). Some ZCTA shapefiles
+    contain GeometryCollections (a polygon plus stray lines/points along the
+    boundary); we strip the non-polygon members so the layer renders cleanly.
+    """
+    if geom is None:
+        return None
+    if geom.geom_type != "GeometryCollection":
+        return geom
+
+    from shapely.geometry import MultiPolygon
+
+    polys = []
+    for part in geom.geoms:
+        if part.is_empty:
+            continue
+        if part.geom_type == "Polygon":
+            polys.append(part)
+        elif part.geom_type == "MultiPolygon":
+            polys.extend(part.geoms)
+    if not polys:
+        return None
+    if len(polys) == 1:
+        return polys[0]
+    return MultiPolygon(polys)
+
+
 class DataLoadError(Exception):
-    """Raised when data cannot be loaded (S3 error, file missing)."""
+    """Raised when data cannot be loaded."""
 
 
 class DataSchemaError(Exception):
     """Raised when loaded data is missing required columns."""
 
 
-# ---------------------------------------------------------------------------
-# S3 client
-# ---------------------------------------------------------------------------
-@st.cache_resource
-def get_s3_client() -> boto3.client:
-    """Create and cache a boto3 S3 client."""
-    return boto3.client("s3")
+@st.cache_data(ttl=3600)
+def load_geodata(granularity: str) -> gpd.GeoDataFrame:
+    """Load and merge geographic boundaries with all choropleth data.
+
+    Args:
+        granularity: 'tract' or 'zip'.
+
+    Returns:
+        Merged GeoDataFrame with all metric columns.
+
+    Raises:
+        DataLoadError: If boundary file is not found.
+    """
+    # Find geo file for this granularity
+    granularities = get_granularities()
+    geo_file = None
+    for g in granularities:
+        if g["id"] == granularity:
+            geo_file = g["geo_file"]
+            break
+
+    if geo_file is None:
+        raise DataLoadError(f"Unknown granularity: {granularity}")
+
+    geo_path = Path(geo_file)
+    if not geo_path.exists():
+        raise DataLoadError(f"Geographic boundary file not found: {geo_file}")
+
+    # Load GeoJSON
+    gdf = gpd.read_file(str(geo_path))
+
+    # Strip GeometryCollection wrappers (Folium tooltips/popups can't render
+    # them and the resulting JS error breaks Leaflet's LayerControl + basemap).
+    gdf["geometry"] = gdf.geometry.apply(_coerce_to_polygonal)
+    gdf = gdf[gdf.geometry.notna()].copy()
+
+    # Simplify geometries for performance (configurable via project.yml)
+    tolerance = get_map_display().get("simplify_tolerance", 0.001)
+    gdf["geometry"] = gdf.geometry.simplify(tolerance, preserve_topology=True)
+
+    # Normalize GEOIDs
+    if "GEOID" in gdf.columns:
+        gdf["GEOID"] = gdf["GEOID"].astype(str).str.zfill(11)
+
+    # Load and merge each data source's parquet
+    data_sources = get_data_sources()
+    for source_key, source_cfg in data_sources.items():
+        output_prefix = source_cfg.get("output_prefix", source_key)
+        parquet_path = f"data/choropleth/{output_prefix}_{granularity}_data.parquet"
+
+        if not Path(parquet_path).exists():
+            logger.warning("Parquet not found: %s", parquet_path)
+            continue
+
+        try:
+            df = pd.read_parquet(parquet_path)
+            if "GEOID" in df.columns:
+                df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
+
+            # Merge on GEOID
+            data_cols = [c for c in df.columns if c != "GEOID"]
+            gdf = gdf.merge(
+                df[["GEOID"] + data_cols],
+                on="GEOID",
+                how="left",
+            )
+            logger.info(
+                "Merged %s: %d data columns", source_key, len(data_cols)
+            )
+        except (FileNotFoundError, pd.errors.ParserError, OSError) as exc:
+            logger.warning("Failed to load %s: %s", parquet_path, exc)
+
+    return gdf
 
 
-# ---------------------------------------------------------------------------
-# Low-level loaders
-# ---------------------------------------------------------------------------
-@st.cache_data
-def load_csv_from_s3(bucket: str, key: str) -> pd.DataFrame:
-    """Load a CSV from S3 into a DataFrame. Raises DataLoadError on failure."""
-    try:
-        client = get_s3_client()
-        response = client.get_object(Bucket=bucket, Key=key)
-        body = response["Body"].read()
-        return pd.read_csv(io.BytesIO(body))
-    except Exception as exc:
-        raise DataLoadError(
-            f"Failed to load s3://{bucket}/{key}: {exc}"
-        ) from exc
+@st.cache_data(ttl=3600)
+def load_geojson_dict(granularity: str) -> dict:
+    """Load raw GeoJSON as dict for Folium layers.
 
+    Args:
+        granularity: 'tract' or 'zip'.
 
-@st.cache_data
-def load_csv_from_file(path: str) -> pd.DataFrame:
-    """Load a CSV from local disk into a DataFrame. Raises DataLoadError on failure."""
-    try:
-        return pd.read_csv(path)
-    except Exception as exc:
-        raise DataLoadError(f"Failed to load file {path}: {exc}") from exc
+    Returns:
+        GeoJSON dict with normalized GEOIDs.
 
+    Raises:
+        DataLoadError: If file not found.
+    """
+    granularities = get_granularities()
+    geo_file = None
+    for g in granularities:
+        if g["id"] == granularity:
+            geo_file = g["geo_file"]
+            break
 
-# ---------------------------------------------------------------------------
-# Helper: validate required columns
-# ---------------------------------------------------------------------------
-def _validate_columns(
-    df: pd.DataFrame, required: list[str], source_name: str
-) -> None:
-    """Raise DataSchemaError if any required columns are missing."""
-    missing = [c for c in required if c not in df.columns]
-    if missing:
-        raise DataSchemaError(
-            f"{source_name} is missing required columns: {missing}"
-        )
+    if geo_file is None:
+        raise DataLoadError(f"Unknown granularity: {granularity}")
 
+    geo_path = Path(geo_file)
+    if not geo_path.exists():
+        raise DataLoadError(f"Geographic boundary file not found: {geo_file}")
 
-# ---------------------------------------------------------------------------
-# High-level loaders
-# ---------------------------------------------------------------------------
-@st.cache_data
-def load_partners_data() -> pd.DataFrame:
-    """Load partners CSV (from S3 or mock). Validates required columns."""
-    if config.USE_MOCK_DATA:
-        path = os.path.join(config.MOCK_DATA_DIR, "mock_nfp_partners.csv")
-        df = load_csv_from_file(path)
-    else:
-        df = load_csv_from_s3(config.AWS_BUCKET_NAME, config.S3_PARTNERS_KEY)
-    _validate_columns(df, config.PARTNERS_CSV_COLUMNS, "Partners CSV")
-    return df
+    with open(geo_path, "r", encoding="utf-8") as f:
+        geojson = json.load(f)
 
-
-@st.cache_data
-def load_census_data() -> pd.DataFrame:
-    """Load census CSV (from S3 or mock). Normalizes GEOID with zfill(11)."""
-    if config.USE_MOCK_DATA:
-        path = os.path.join(
-            config.MOCK_DATA_DIR, "mock_census_tract_data.csv"
-        )
-        df = load_csv_from_file(path)
-    else:
-        df = load_csv_from_s3(config.AWS_BUCKET_NAME, config.S3_CENSUS_KEY)
-    _validate_columns(df, config.CENSUS_CSV_COLUMNS, "Census CSV")
-    df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
-    return df
-
-
-@st.cache_data
-def load_cdc_places_data() -> pd.DataFrame:
-    """Load CDC PLACES CSV (from S3 or mock). Normalizes GEOID with zfill(11)."""
-    if config.USE_MOCK_DATA:
-        path = os.path.join(
-            config.MOCK_DATA_DIR, "mock_cdc_places_data.csv"
-        )
-        df = load_csv_from_file(path)
-    else:
-        df = load_csv_from_s3(
-            config.AWS_BUCKET_NAME, config.S3_CDC_PLACES_KEY
-        )
-    _validate_columns(df, config.CDC_PLACES_CSV_COLUMNS, "CDC PLACES CSV")
-    df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
-    return df
-
-
-@st.cache_data
-def load_geojson() -> dict:
-    """Load GeoJSON from disk. Normalizes feature GEOID properties to 11 chars.
-    Raises DataLoadError if file is missing."""
-    geojson_path = Path(config.GEOJSON_PATH)
-    if not geojson_path.exists():
-        raise DataLoadError(
-            f"GeoJSON file not found: {config.GEOJSON_PATH}"
-        )
-    try:
-        with open(geojson_path, "r", encoding="utf-8") as f:
-            geojson = json.load(f)
-    except Exception as exc:
-        raise DataLoadError(
-            f"Failed to read GeoJSON: {exc}"
-        ) from exc
-
-    # Normalize GEOID properties to 11 characters
+    # Normalize GEOIDs
     for feature in geojson.get("features", []):
         props = feature.get("properties", {})
         if "GEOID" in props and props["GEOID"] is not None:

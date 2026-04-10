@@ -1,0 +1,453 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.683307,
+          36.163467
+        ]
+      },
+      "properties": {
+        "partner_name": "Antioch After School Program",
+        "address": "5589 Broadway, Nashville, TN 37201",
+        "partner_type": "after_school",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.697534,
+          36.17664
+        ]
+      },
+      "properties": {
+        "partner_name": "Bordeaux Family Shelter",
+        "address": "8889 West End Ave, Nashville, TN 37203",
+        "partner_type": "transitional_housing",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.781884,
+          36.137195
+        ]
+      },
+      "properties": {
+        "partner_name": "Donelson Development Corp",
+        "address": "731 Charlotte Ave, Nashville, TN 37204",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.876405,
+          36.167726
+        ]
+      },
+      "properties": {
+        "partner_name": "East Nashville Job Training Center",
+        "address": "8596 Gallatin Pike, Nashville, TN 37205",
+        "partner_type": "workforce_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.681439,
+          36.146468
+        ]
+      },
+      "properties": {
+        "partner_name": "Germantown Workforce Solutions",
+        "address": "8292 Nolensville Pike, Nashville, TN 37206",
+        "partner_type": "workforce_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.858998,
+          36.183633
+        ]
+      },
+      "properties": {
+        "partner_name": "Napier Elementary Summer Program",
+        "address": "6352 Dickerson Pike, Nashville, TN 37208",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.855615,
+          36.136917
+        ]
+      },
+      "properties": {
+        "partner_name": "North Nashville Homeless Services",
+        "address": "1735 Shelby Ave, Nashville, TN 37209",
+        "partner_type": "homeless_outreach",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.679009,
+          36.086672
+        ]
+      },
+      "properties": {
+        "partner_name": "Rivergate Career Services",
+        "address": "7604 Main St, Nashville, TN 37210",
+        "partner_type": "workforce_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.827792,
+          36.154413
+        ]
+      },
+      "properties": {
+        "partner_name": "Sylvan Park Community Center",
+        "address": "7034 Church St, Nashville, TN 37211",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.899845,
+          36.178456
+        ]
+      },
+      "properties": {
+        "partner_name": "Antioch Elder Care Services",
+        "address": "3609 Commerce St, Nashville, TN 37212",
+        "partner_type": "senior_services",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.732872,
+          36.127184
+        ]
+      },
+      "properties": {
+        "partner_name": "Bordeaux Senior Nutrition Program",
+        "address": "772 Demonbreun St, Nashville, TN 37213",
+        "partner_type": "senior_services",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.665967,
+          36.184103
+        ]
+      },
+      "properties": {
+        "partner_name": "Donelson Community Center",
+        "address": "9708 Rosa L Parks Blvd, Nashville, TN 37214",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.786999,
+          36.181957
+        ]
+      },
+      "properties": {
+        "partner_name": "East Nashville Neighborhood Alliance",
+        "address": "4511 Jefferson St, Nashville, TN 37215",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.684801,
+          36.204529
+        ]
+      },
+      "properties": {
+        "partner_name": "Germantown Senior Nutrition Program",
+        "address": "8941 Buchanan St, Nashville, TN 37216",
+        "partner_type": "senior_services",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.670429,
+          36.198011
+        ]
+      },
+      "properties": {
+        "partner_name": "Madison Elementary Summer Program",
+        "address": "6810 Trinity Ln, Nashville, TN 37217",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.693568,
+          36.207821
+        ]
+      },
+      "properties": {
+        "partner_name": "Napier Youth Summer Camp",
+        "address": "7805 Clarksville Pike, Nashville, TN 37218",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.725821,
+          36.100957
+        ]
+      },
+      "properties": {
+        "partner_name": "Rivergate Transitional Housing",
+        "address": "2026 Ellington Pkwy, Nashville, TN 37220",
+        "partner_type": "transitional_housing",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.768855,
+          36.153114
+        ]
+      },
+      "properties": {
+        "partner_name": "Sylvan Park Homeless Services",
+        "address": "3702 Lebanon Pike, Nashville, TN 37221",
+        "partner_type": "homeless_outreach",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.668844,
+          36.187356
+        ]
+      },
+      "properties": {
+        "partner_name": "Antioch Medical Outreach",
+        "address": "4720 Broadway, Nashville, TN 37228",
+        "partner_type": "medical_health",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.832425,
+          36.240232
+        ]
+      },
+      "properties": {
+        "partner_name": "Bordeaux Community Center",
+        "address": "5027 West End Ave, Nashville, TN 37201",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.721604,
+          36.200101
+        ]
+      },
+      "properties": {
+        "partner_name": "Donelson Community Health Center",
+        "address": "533 Charlotte Ave, Nashville, TN 37203",
+        "partner_type": "medical_health",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.871871,
+          36.138139
+        ]
+      },
+      "properties": {
+        "partner_name": "East Nashville Kids Club",
+        "address": "5510 Gallatin Pike, Nashville, TN 37204",
+        "partner_type": "after_school",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.715038,
+          36.089252
+        ]
+      },
+      "properties": {
+        "partner_name": "Germantown Elementary Summer Program",
+        "address": "1627 Nolensville Pike, Nashville, TN 37205",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.66507,
+          36.161052
+        ]
+      },
+      "properties": {
+        "partner_name": "Madison Youth Summer Camp",
+        "address": "7458 Murfreesboro Pike, Nashville, TN 37206",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.6669,
+          36.157096
+        ]
+      },
+      "properties": {
+        "partner_name": "Napier Kids Club",
+        "address": "6861 Dickerson Pike, Nashville, TN 37207",
+        "partner_type": "after_school",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.711116,
+          36.148552
+        ]
+      },
+      "properties": {
+        "partner_name": "North Nashville Elementary Summer Program",
+        "address": "9232 Shelby Ave, Nashville, TN 37208",
+        "partner_type": "school_summer",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.768289,
+          36.096271
+        ]
+      },
+      "properties": {
+        "partner_name": "Rivergate Community Health Center",
+        "address": "7472 Main St, Nashville, TN 37209",
+        "partner_type": "medical_health",
+        "geocode_status": "success"
+      }
+    },
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [
+          -86.679672,
+          36.21103
+        ]
+      },
+      "properties": {
+        "partner_name": "Sylvan Park Development Corp",
+        "address": "3729 Church St, Nashville, TN 37210",
+        "partner_type": "community_development",
+        "geocode_status": "success"
+      }
+    }
+  ]
+}

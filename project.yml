@@ -1,0 +1,221 @@
+project:
+  name: "NFP Food Insecurity Map"
+  slug: "nfp-food-insecurity-map"
+  primary_org: "Nashville Food Project"
+  secondary_org: "BDAIC"
+
+geography:
+  state_fips: "47"
+  state_name: "Tennessee"
+  msa_name: "Nashville-Davidson-Murfreesboro-Franklin"
+  msa_counties:
+    - fips: "015"
+      name: "Cannon County"
+    - fips: "021"
+      name: "Cheatham County"
+    - fips: "037"
+      name: "Davidson County"
+    - fips: "043"
+      name: "Dickson County"
+    - fips: "081"
+      name: "Hickman County"
+    - fips: "111"
+      name: "Macon County"
+    - fips: "119"
+      name: "Maury County"
+    - fips: "147"
+      name: "Robertson County"
+    - fips: "149"
+      name: "Rutherford County"
+    - fips: "159"
+      name: "Smith County"
+    - fips: "165"
+      name: "Sumner County"
+    - fips: "169"
+      name: "Trousdale County"
+    - fips: "187"
+      name: "Williamson County"
+    - fips: "189"
+      name: "Wilson County"
+  map_center: [36.05, -86.60]
+  default_zoom: 9
+  tiger_year: 2023
+
+data_sources:
+  census_acs:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "census_acs5_profile/geo_tract/"
+      zip: "census_acs5_profile/geo_zipcode/"
+    output_prefix: acs
+    geoid_column: GEO_ID
+    variables:
+      - column: DP03_0062E
+        display_name: "Median Household Income"
+        colormap: YlGnBu
+        legend_name: "Median Household Income ($)"
+        format_str: "${:,.0f}"
+        tooltip_alias: "Income"
+        default_visible: true
+      - column: DP03_0119PE
+        display_name: "Poverty Rate"
+        colormap: YlOrRd
+        legend_name: "Poverty Rate (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Poverty"
+        default_visible: false
+      - column: DP05_0001E
+        display_name: "Total Population"
+        colormap: Blues
+        legend_name: "Population"
+        format_str: "{:,.0f}"
+        tooltip_alias: "Population"
+        default_visible: false
+
+  health_lila:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "cdc_places/census_tract/"
+      zip: "cdc_places/zcta/"
+    output_prefix: health_lila
+    geoid_column: LocationID
+    filters:
+      - column: Data_Value_Type
+        value: "Crude prevalence"
+    variables:
+      - column: DIABETES
+        display_name: "Diabetes Prevalence"
+        colormap: PuRd
+        legend_name: "Diabetes Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Diabetes"
+        default_visible: false
+      - column: BPHIGH
+        display_name: "Hypertension Prevalence"
+        colormap: Reds
+        legend_name: "Hypertension Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Hypertension"
+        default_visible: false
+      - column: OBESITY
+        display_name: "Obesity Prevalence"
+        colormap: OrRd
+        legend_name: "Obesity Prevalence (%)"
+        format_str: "{:.1f}%"
+        tooltip_alias: "Obesity"
+        default_visible: false
+
+  usda_lila:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_prefix:
+      tract: "nfp-mapping/usda/lila/tract/"
+    source_key: "nfp-mapping/usda/lila/source/food_access_research_atlas.csv"
+    crosswalk_key: "nfp-mapping/usda/lila/crosswalk/tract_2010_to_2020_tn.csv"
+    output_prefix: usda_lila
+    source_geoid_column: CensusTract
+    source_geoid_vintage: "2010"
+    target_geoid_vintage: "2020"
+    note: "LILA data uses 2010 Census tract boundaries. Converted to 2020 tracts via Census Bureau relationship file. Tract-level only (no ZIP aggregation)."
+    variables:
+      - column: LILATracts_1And10
+        display_name: "LILA Designation (1 & 10 mi)"
+        colormap: RdYlGn_r
+        legend_name: "Low Income + Low Access"
+        format_str: "{}"
+        tooltip_alias: "LILA"
+        default_visible: false
+        layer_type: categorical
+        categories:
+          0: "Not LILA"
+          1: "LILA Tract"
+      - column: lapop1
+        display_name: "Low Access Population (1 mi)"
+        colormap: BuPu
+        legend_name: "Population Beyond 1 mi from Supermarket"
+        format_str: "{:,.0f}"
+        tooltip_alias: "Low Access Pop"
+        default_visible: false
+      - column: lalowi1
+        display_name: "Low Income, Low Access Population (1 mi)"
+        colormap: YlOrBr
+        legend_name: "Low Income Pop Beyond 1 mi"
+        format_str: "{:,.0f}"
+        tooltip_alias: "LI Low Access Pop"
+        default_visible: false
+
+  giving_matters:
+    source_type: s3
+    s3_bucket: bdaic-public-transform
+    s3_key: "nfp-mapping/partners/giving_matters.csv"
+    output_prefix: giving_matters
+    enabled: false  # Set to true once data is uploaded to S3
+    note: "Giving Matters nonprofit data from CFMT. Schema TBD — enable after data receipt and column mapping."
+    # Column mapping will be added here once the schema is known:
+    # required_columns:
+    #   name_column: TBD
+    #   address_column: TBD
+    #   category_column: TBD
+    geocode_cache_key: "nfp-mapping/partners/giving_matters_geocode_cache.csv"
+    point_layer_name: "Community Partners (Giving Matters)"
+    marker_style: "circle"  # Use circle markers to distinguish from NFP partner pins
+    default_color: "#17BECF"
+
+partners:
+  source_type: s3
+  s3_bucket: bdaic-public-transform
+  s3_key: "nfp-mapping/partners/nfp_partners.csv"
+  geocode_cache_key: "nfp-mapping/partners/geocode_cache.csv"
+  popup_fields:
+    - partner_name
+    - address
+    - partner_type
+  types:
+    school_summer:
+      label: "School & Summer Programs"
+      color: "#E41A1C"
+      icon: "graduation-cap"
+    medical_health:
+      label: "Medical & Health Services"
+      color: "#377EB8"
+      icon: "heartbeat"
+    transitional_housing:
+      label: "Transitional Housing"
+      color: "#4DAF4A"
+      icon: "home"
+    senior_services:
+      label: "Senior Services"
+      color: "#984EA3"
+      icon: "user"
+    community_development:
+      label: "Community Development"
+      color: "#FF7F00"
+      icon: "users"
+    homeless_outreach:
+      label: "Homeless Outreach"
+      color: "#A65628"
+      icon: "hand-holding-heart"
+    workforce_development:
+      label: "Workforce Development"
+      color: "#F781BF"
+      icon: "briefcase"
+    after_school:
+      label: "After-School Programs"
+      color: "#999999"
+      icon: "child"
+
+map_display:
+  tiles: cartodbpositron
+  tile_attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+  min_zoom: 8
+  max_zoom: 16
+  simplify_tolerance: 0.001
+  granularities:
+    - id: tract
+      label: "Census Tracts"
+      geo_file: "data/geo/tracts.geojson"
+    - id: zip
+      label: "ZIP Codes"
+      geo_file: "data/geo/zipcodes.geojson"

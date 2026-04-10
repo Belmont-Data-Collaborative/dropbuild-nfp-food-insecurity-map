@@ -1,254 +1,282 @@
+"""NFP Food Insecurity Map — Home Page (multi-page app entry point).
+
+Per spec_updates_2.md §4.2, this is the cover/landing page for the
+multi-page Streamlit application. Map functionality lives in pages/1_Map.py.
+"""
 from __future__ import annotations
 
 from dotenv import load_dotenv
 
 load_dotenv()
 
-import pandas as pd
+import json
+import logging
+from datetime import datetime
+from pathlib import Path
+
 import streamlit as st
-from streamlit_folium import st_folium
 
 from src import config
-from src.data_loader import (
-    DataLoadError,
-    DataSchemaError,
-    load_cdc_places_data,
-    load_census_data,
-    load_geojson,
-    load_partners_data,
+from src.config_loader import (
+    get_all_layer_configs,
+    get_geography,
+    get_project,
 )
-from src.geocoder import GeocodingError, geocode_partners
-from src.map_builder import build_map
+
+# Configure logging
+logging.basicConfig(
+    level=config.LOG_LEVEL,
+    format="%(asctime)s %(name)s %(levelname)s %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+
+def _configure_page() -> None:
+    """Set Streamlit page config. Must be the first Streamlit call."""
+    st.set_page_config(
+        page_title="NFP Food Insecurity Map",
+        page_icon="\U0001f5fa\ufe0f",
+        layout="wide",
+        initial_sidebar_state="expanded",
+    )
+
+
+def _inject_custom_css() -> None:
+    """Inject custom CSS for the branded landing page."""
+    st.markdown(
+        """
+    <style>
+    .home-hero {
+        background: linear-gradient(135deg, #2E7D32, #1B5E20);
+        color: white;
+        padding: 2.5rem 2rem;
+        border-radius: 12px;
+        text-align: center;
+        margin-bottom: 1.5rem;
+    }
+    .home-hero h1 {
+        margin: 0;
+        font-size: 2.4rem;
+        font-weight: 700;
+    }
+    .home-hero p.subtitle {
+        margin: 0.5rem 0 0;
+        opacity: 0.92;
+        font-size: 1.1rem;
+    }
+    .home-description {
+        font-size: 1.05rem;
+        line-height: 1.6;
+        color: #333;
+        max-width: 900px;
+        margin: 0 auto 1.5rem;
+        text-align: center;
+    }
+    .nav-card {
+        background: white;
+        border: 1px solid #e0e0e0;
+        border-left: 4px solid #2E7D32;
+        border-radius: 8px;
+        padding: 1.25rem 1.5rem;
+        margin-bottom: 1rem;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+    }
+    .nav-card h3 { margin: 0 0 0.4rem; color: #1B5E20; font-size: 1.15rem; }
+    .nav-card p  { margin: 0; color: #555; font-size: 0.92rem; }
+    .stats-bar {
+        background: #f7f9f7;
+        border: 1px solid #e0e8e0;
+        border-radius: 8px;
+        padding: 1rem 1.5rem;
+        margin: 1.5rem 0;
+        text-align: center;
+        font-size: 0.95rem;
+        color: #444;
+    }
+    .stats-bar strong { color: #1B5E20; }
+    .branding-row {
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        gap: 2rem;
+        margin: 1.5rem 0 0.5rem;
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .branding-row .org { font-weight: 600; color: #444; }
+    .freshness {
+        text-align: center;
+        font-size: 0.82rem;
+        color: #888;
+        margin-top: 0.5rem;
+    }
+    </style>
+    """,
+        unsafe_allow_html=True,
+    )
+
+
+def _gather_key_stats() -> dict[str, int | str]:
+    """Compute dynamic stats for the landing-page summary bar."""
+    geo = get_geography()
+    counties = len(geo.get("msa_counties", [])) or 1
+
+    tracts = 0
+    tracts_path = Path("data/geo/tracts.geojson")
+    if tracts_path.exists():
+        try:
+            with open(tracts_path, "r", encoding="utf-8") as f:
+                tracts = len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            tracts = 0
+
+    indicators = len(get_all_layer_configs())
+
+    partners = 0
+    partners_path = Path("data/points/partners.geojson")
+    if partners_path.exists():
+        try:
+            with open(partners_path, "r", encoding="utf-8") as f:
+                partners = len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            partners = 0
+
+    return {
+        "counties": counties,
+        "tracts": tracts,
+        "indicators": indicators,
+        "partners": partners,
+    }
+
+
+def _last_pipeline_run() -> str:
+    """Return the most recent mtime among the choropleth parquet outputs."""
+    parquet_dir = Path("data/choropleth")
+    if not parquet_dir.exists():
+        return "unknown"
+    files = list(parquet_dir.glob("*.parquet"))
+    if not files:
+        return "unknown"
+    latest = max(f.stat().st_mtime for f in files)
+    return datetime.fromtimestamp(latest).strftime("%Y-%m-%d")
+
+
+def _render_hero() -> None:
+    project = get_project()
+    st.markdown(
+        f"""
+        <div class="home-hero">
+            <h1>{project['name']}</h1>
+            <p class="subtitle">A strategic planning tool for the Nashville Food Project</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_description() -> None:
+    st.markdown(
+        """
+        <div class="home-description">
+            This interactive mapping tool helps the Nashville Food Project and
+            its partners understand where food insecurity is concentrated across
+            the 14-county Nashville metropolitan area. It overlays Census income
+            and poverty data, CDC health indicators, USDA food-access measures,
+            and existing NFP partner locations to support data-informed decisions
+            about where to grow the partner network.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_stats_bar() -> None:
+    stats = _gather_key_stats()
+    st.markdown(
+        f"""
+        <div class="stats-bar">
+            Covering <strong>{stats['counties']}</strong> counties &middot;
+            <strong>{stats['tracts']:,}</strong> census tracts &middot;
+            <strong>{stats['indicators']}</strong> data indicators &middot;
+            <strong>{stats['partners']}</strong> NFP partner locations
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def _render_nav_cards() -> None:
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.markdown(
+            """
+            <div class="nav-card">
+                <h3>\U0001f5fa\ufe0f  Interactive Map</h3>
+                <p>Explore food insecurity indicators across the Nashville MSA
+                with toggleable layers, partner locations, and choropleth views
+                at tract or ZIP-code granularity.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        try:
+            st.page_link("pages/1_Map.py", label="Open the Map", icon="\u27a1\ufe0f")
+        except Exception:
+            st.caption("Open the **Map** page from the sidebar.")
+
+    with col2:
+        st.markdown(
+            """
+            <div class="nav-card">
+                <h3>\U0001f4d6  About the Data</h3>
+                <p>Methodology, vintage dates, and source documentation for every
+                dataset shown on the map &mdash; including the LILA 2010\u219220 tract
+                conversion and known limitations.</p>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        try:
+            st.page_link(
+                "pages/2_About_the_Data.py",
+                label="View Data Documentation",
+                icon="\u27a1\ufe0f",
+            )
+        except Exception:
+            st.caption("Open the **About the Data** page from the sidebar.")
+
+
+def _render_branding_and_freshness() -> None:
+    project = get_project()
+    primary = project.get("primary_org", "Nashville Food Project")
+    secondary = project.get("secondary_org", "Belmont University BDAIC")
+    st.markdown(
+        f"""
+        <div class="branding-row">
+            <div class="org">{primary}</div>
+            <div>&middot;</div>
+            <div class="org">{secondary}</div>
+        </div>
+        <div class="freshness">Data last updated: {_last_pipeline_run()}</div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 def main() -> None:
-    st.set_page_config(
-        page_title="NFP Food Insecurity Map",
-        page_icon="🗺️",
-        layout="wide",
-    )
-
-    # -----------------------------------------------------------------------
-    # Sidebar
-    # -----------------------------------------------------------------------
-    with st.sidebar:
-        # Section 1: Title and description
-        st.title("Nashville Food Project \u2014 Food Insecurity Map")
-        st.write(
-            "An interactive mapping tool to visualize food insecurity "
-            "across Davidson County, Tennessee. "
-            "Explore census tract data overlaid with NFP partner locations "
-            "to identify areas of greatest need."
-        )
-
-        st.divider()
-
-        # Section 2: Data Layers
-        st.subheader("Data Layers")
-        show_partners = st.checkbox(
-            "Show NFP Partner Locations",
-            value=True,
-            key="show_partners",
-        )
-
-        layer_options = ["None"] + [
-            layer["display_name"] for layer in config.CHOROPLETH_LAYERS
-        ]
-        # Default to Median Household Income (Census)
-        default_layer = next(
-            (
-                layer["display_name"]
-                for layer in config.CHOROPLETH_LAYERS
-                if layer["id"] == config.DEFAULT_CHOROPLETH_LAYER
-            ),
-            "None",
-        )
-        default_index = (
-            layer_options.index(default_layer)
-            if default_layer in layer_options
-            else 0
-        )
-        selected_layer_name = st.selectbox(
-            "Background Data Layer",
-            options=layer_options,
-            index=default_index,
-            key="selected_layer",
-        )
-
-        st.divider()
-
-        # Section 3: Partner Type Legend
-        st.subheader("Partner Type Legend")
-        for ptype, label in config.PARTNER_TYPE_LABELS.items():
-            color = config.PARTNER_TYPE_COLORS.get(
-                ptype, config.FALLBACK_COLOR
-            )
-            st.markdown(
-                f'<span style="display:inline-block;width:14px;height:14px;'
-                f"background-color:{color};border-radius:50%;"
-                f'margin-right:8px;vertical-align:middle;"></span>'
-                f"<span>{label}</span>",
-                unsafe_allow_html=True,
-            )
-
-        st.divider()
-
-        # Section 4: Export
-        st.subheader("Export")
-        # Placeholder — map HTML will be set after map is built
-        export_placeholder = st.empty()
-
-        st.divider()
-
-        # Section 5: Data Sources
-        st.subheader("Data Sources")
-        data_freshness_placeholder = st.empty()
-
-    # -----------------------------------------------------------------------
-    # Resolve selected layer id
-    # -----------------------------------------------------------------------
-    selected_layer_id: str | None = None
-    selected_layer_config: dict | None = None
-    if selected_layer_name != "None":
-        for layer in config.CHOROPLETH_LAYERS:
-            if layer["display_name"] == selected_layer_name:
-                selected_layer_id = layer["id"]
-                selected_layer_config = layer
-                break
-
-    # -----------------------------------------------------------------------
-    # Data freshness notice
-    # -----------------------------------------------------------------------
-    freshness_parts: list[str] = []
-    if show_partners:
-        freshness_parts.append("**NFP Partners**: Updated at runtime")
-    if selected_layer_config is not None:
-        source = selected_layer_config["csv_source"]
-        if source == "census":
-            freshness_parts.append(
-                "**Census Data**: ACS 2022 5-Year Estimates"
-            )
-        elif source == "cdc_places":
-            freshness_parts.append("**CDC PLACES**: CDC PLACES 2022")
-    if not freshness_parts:
-        freshness_parts.append("Select a data layer to see source details.")
-    data_freshness_placeholder.markdown("\n\n".join(freshness_parts))
-
-    # -----------------------------------------------------------------------
-    # Load data
-    # -----------------------------------------------------------------------
-    geojson = None
-    census_df = None
-    cdc_df = None
-    partners_df = None
-    geocoded_df = None
-
-    try:
-        with st.spinner("Loading map boundaries..."):
-            geojson = load_geojson()
-    except DataLoadError:
-        st.error(config.ERROR_DATA_LOAD)
-        st.stop()
-
-    try:
-        with st.spinner("Loading census data..."):
-            census_df = load_census_data()
-    except (DataLoadError, DataSchemaError) as exc:
-        if isinstance(exc, DataSchemaError):
-            st.error(str(exc))
-        else:
-            st.error(config.ERROR_DATA_LOAD)
-        st.stop()
-
-    try:
-        with st.spinner("Loading CDC PLACES data..."):
-            cdc_df = load_cdc_places_data()
-    except (DataLoadError, DataSchemaError) as exc:
-        if isinstance(exc, DataSchemaError):
-            st.error(str(exc))
-        else:
-            st.error(config.ERROR_DATA_LOAD)
-        st.stop()
-
-    # Check for zero GEOID matches
-    if census_df is not None and geojson is not None:
-        geojson_geoids = {
-            str(f["properties"].get("GEOID", "")).zfill(11)
-            for f in geojson.get("features", [])
-        }
-        census_geoids = set(census_df["GEOID"].astype(str))
-        if len(geojson_geoids & census_geoids) == 0:
-            st.warning(config.WARNING_NO_GEOID_MATCH)
-
-    # Load and geocode partners
-    if show_partners:
-        try:
-            with st.spinner("Loading partner data..."):
-                partners_df = load_partners_data()
-        except DataLoadError:
-            st.error(config.ERROR_DATA_LOAD)
-            st.stop()
-        except DataSchemaError as exc:
-            # Extract column name from exception
-            st.error(str(exc))
-            st.stop()
-
-        try:
-            with st.spinner("Geocoding partner addresses..."):
-                geocoded_df = geocode_partners(partners_df)
-        except GeocodingError:
-            st.error(config.ERROR_DATA_LOAD)
-            st.stop()
-
-        # Merge partner_type into geocoded_df for marker coloring
-        if geocoded_df is not None and partners_df is not None:
-            if "partner_type" not in geocoded_df.columns:
-                # Merge partner_type from original partners_df
-                type_map = partners_df[
-                    ["partner_name", "partner_type"]
-                ].drop_duplicates(subset=["partner_name"])
-                geocoded_df = geocoded_df.merge(
-                    type_map, on="partner_name", how="left"
-                )
-
-        # Check for geocoding failures
-        if geocoded_df is not None:
-            failed_count = (
-                geocoded_df["geocode_status"] == "failed"
-            ).sum()
-            if failed_count > 0:
-                st.warning(
-                    config.WARNING_GEOCODE_FAILURES.format(
-                        count=failed_count
-                    )
-                )
-
-    # -----------------------------------------------------------------------
-    # Build and render map
-    # -----------------------------------------------------------------------
-    folium_map = build_map(
-        geojson=geojson,
-        census_df=census_df,
-        cdc_df=cdc_df,
-        geocoded_df=geocoded_df,
-        selected_layer_id=selected_layer_id,
-        show_partners=show_partners,
-    )
-
-    st_folium(folium_map, width=None, height=700, returned_objects=[])
-
-    # -----------------------------------------------------------------------
-    # Export button (HTML download — PNG is impossible in pure Streamlit)
-    # -----------------------------------------------------------------------
-    map_html = folium_map._repr_html_()
-    with export_placeholder:
-        st.download_button(
-            label="\u2b07 Download Map as PNG",
-            data=map_html,
-            file_name="nfp_food_insecurity_map.html",
-            mime="text/html",
-        )
+    """Render the Home page."""
+    _configure_page()
+    _inject_custom_css()
+    _render_hero()
+    _render_description()
+    _render_stats_bar()
+    _render_nav_cards()
+    _render_branding_and_freshness()
 
 
 if __name__ == "__main__":
+    main()
+else:
+    # Streamlit executes the script top-to-bottom; call main() unconditionally.
     main()

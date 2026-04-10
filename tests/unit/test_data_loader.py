@@ -1,9 +1,9 @@
+"""Unit tests for src/data_loader.py — Parquet + multi-granularity loading."""
 from __future__ import annotations
-
-"""Unit tests for src/data_loader.py."""
 
 import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import pandas as pd
@@ -18,19 +18,11 @@ sys.modules.setdefault("streamlit", _st_mock)
 sys.modules.setdefault("streamlit_folium", MagicMock())
 sys.modules.setdefault("boto3", MagicMock())
 
-from src.data_loader import (  # noqa: E402
-    DataLoadError,
-    DataSchemaError,
-    load_csv_from_file,
-)
-
-FIXTURES_DIR = os.path.join(
-    os.path.dirname(__file__), os.pardir, "fixtures"
-)
+from src.data_loader import DataLoadError, DataSchemaError  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# Test: exception classes are defined
+# Test: exception classes
 # ---------------------------------------------------------------------------
 class TestExceptions:
     def test_data_load_error_is_exception(self):
@@ -49,65 +41,60 @@ class TestExceptions:
 
 
 # ---------------------------------------------------------------------------
-# Test: load_csv_from_file
+# Test: load_geodata with real tract file
 # ---------------------------------------------------------------------------
-class TestLoadCsvFromFile:
-    def test_loads_valid_csv(self, tmp_path):
-        csv_file = tmp_path / "test.csv"
-        csv_file.write_text("col_a,col_b\n1,2\n3,4\n")
-        df = load_csv_from_file(str(csv_file))
-        assert isinstance(df, pd.DataFrame)
-        assert list(df.columns) == ["col_a", "col_b"]
-        assert len(df) == 2
+class TestLoadGeodata:
+    def test_load_tract_granularity(self):
+        """Load tract geodata if the file exists."""
+        tract_path = Path("data/geo/tracts.geojson")
+        if not tract_path.exists():
+            pytest.skip("Tract GeoJSON not available")
 
-    def test_raises_data_load_error_for_missing_file(self):
-        with pytest.raises(DataLoadError):
-            load_csv_from_file("/nonexistent/path/fake.csv")
+        from src.data_loader import load_geodata
+        gdf = load_geodata("tract")
+        assert len(gdf) > 0
+        assert "GEOID" in gdf.columns
+        assert "geometry" in gdf.columns
 
-    def test_loads_fixture_partners(self):
-        path = os.path.join(FIXTURES_DIR, "sample_partners.csv")
-        df = load_csv_from_file(path)
-        assert len(df) == 5
-        assert "partner_name" in df.columns
+    def test_geoid_normalized_to_11_chars(self):
+        tract_path = Path("data/geo/tracts.geojson")
+        if not tract_path.exists():
+            pytest.skip("Tract GeoJSON not available")
 
-    def test_loads_fixture_census(self):
-        path = os.path.join(FIXTURES_DIR, "sample_census.csv")
-        df = load_csv_from_file(path)
-        assert len(df) == 3
-        assert "GEOID" in df.columns
-
-
-# ---------------------------------------------------------------------------
-# Test: GEOID normalization
-# ---------------------------------------------------------------------------
-class TestGeoidNormalization:
-    def test_census_geoids_are_11_chars(self):
-        """After loading census data via load_census_data, GEOIDs should be 11 chars.
-        We test the normalization logic directly."""
-        path = os.path.join(FIXTURES_DIR, "sample_census.csv")
-        df = load_csv_from_file(path)
-        # Apply the same normalization that load_census_data should apply
-        df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
-        for geoid in df["GEOID"]:
-            assert len(str(geoid)) == 11, f"GEOID {geoid} is not 11 chars"
-
-    def test_cdc_geoids_are_11_chars(self):
-        path = os.path.join(FIXTURES_DIR, "sample_cdc_places.csv")
-        df = load_csv_from_file(path)
-        df["GEOID"] = df["GEOID"].astype(str).str.zfill(11)
-        for geoid in df["GEOID"]:
+        from src.data_loader import load_geodata
+        gdf = load_geodata("tract")
+        for geoid in gdf["GEOID"]:
             assert len(str(geoid)) == 11
 
+    def test_unknown_granularity_raises(self):
+        from src.data_loader import load_geodata
+        with pytest.raises(DataLoadError, match="Unknown granularity"):
+            load_geodata("unknown")
+
 
 # ---------------------------------------------------------------------------
-# Test: schema validation
+# Test: load_geojson_dict
 # ---------------------------------------------------------------------------
-class TestSchemaValidation:
-    def test_missing_column_raises_schema_error(self, tmp_path):
-        """If we load a CSV missing a required column and validate, it should fail."""
-        csv_file = tmp_path / "bad.csv"
-        csv_file.write_text("wrong_col,another\n1,2\n")
-        df = load_csv_from_file(str(csv_file))
-        required = ["partner_name", "address", "partner_type"]
-        missing = [c for c in required if c not in df.columns]
-        assert len(missing) > 0, "Test CSV should be missing required columns"
+class TestLoadGeojsonDict:
+    def test_returns_dict(self):
+        tract_path = Path("data/geo/tracts.geojson")
+        if not tract_path.exists():
+            pytest.skip("Tract GeoJSON not available")
+
+        from src.data_loader import load_geojson_dict
+        geojson = load_geojson_dict("tract")
+        assert isinstance(geojson, dict)
+        assert "features" in geojson
+        assert len(geojson["features"]) > 0
+
+    def test_geoid_normalized_in_features(self):
+        tract_path = Path("data/geo/tracts.geojson")
+        if not tract_path.exists():
+            pytest.skip("Tract GeoJSON not available")
+
+        from src.data_loader import load_geojson_dict
+        geojson = load_geojson_dict("tract")
+        for feature in geojson["features"]:
+            geoid = feature["properties"].get("GEOID", "")
+            if geoid:
+                assert len(geoid) == 11

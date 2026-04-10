@@ -1,15 +1,16 @@
+"""Unit tests for src/layer_manager.py — pins, FeatureGroups, choropleth."""
 from __future__ import annotations
 
-"""Unit tests for src/layer_manager.py."""
-
 import json
-import os
 import sys
+from pathlib import Path
 from unittest.mock import MagicMock
 
+import geopandas as gpd
 import numpy as np
 import pandas as pd
 import pytest
+from shapely.geometry import Point, Polygon
 
 # Mock streamlit before importing src modules
 _st_mock = MagicMock()
@@ -20,194 +21,158 @@ sys.modules.setdefault("streamlit", _st_mock)
 sys.modules.setdefault("streamlit_folium", MagicMock())
 sys.modules.setdefault("boto3", MagicMock())
 
-import folium  # noqa: E402
 import branca.colormap  # noqa: E402
+import folium  # noqa: E402
 
+from src.config_loader import get_partner_config  # noqa: E402
 from src.layer_manager import (  # noqa: E402
+    build_boundary_layer,
     build_choropleth_layer,
     build_partner_markers,
-    build_tract_boundaries_layer,
 )
-from src import config  # noqa: E402
 
 
 # ---------------------------------------------------------------------------
-# Shared test GeoJSON fixture
+# Fixtures
 # ---------------------------------------------------------------------------
 @pytest.fixture
-def sample_geojson():
-    """A minimal GeoJSON FeatureCollection for Davidson County tracts."""
-    return {
-        "type": "FeatureCollection",
-        "features": [
-            {
-                "type": "Feature",
-                "properties": {"GEOID": "47037001700", "NAME": "17", "NAMELSAD": "Census Tract 17"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[
-                        [-86.80, 36.16], [-86.78, 36.16],
-                        [-86.78, 36.18], [-86.80, 36.18],
-                        [-86.80, 36.16],
-                    ]],
-                },
-            },
-            {
-                "type": "Feature",
-                "properties": {"GEOID": "47037001800", "NAME": "18", "NAMELSAD": "Census Tract 18"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[
-                        [-86.78, 36.16], [-86.76, 36.16],
-                        [-86.76, 36.18], [-86.78, 36.18],
-                        [-86.78, 36.16],
-                    ]],
-                },
-            },
-            {
-                "type": "Feature",
-                "properties": {"GEOID": "47037001900", "NAME": "19", "NAMELSAD": "Census Tract 19"},
-                "geometry": {
-                    "type": "Polygon",
-                    "coordinates": [[
-                        [-86.76, 36.16], [-86.74, 36.16],
-                        [-86.74, 36.18], [-86.76, 36.18],
-                        [-86.76, 36.16],
-                    ]],
-                },
-            },
+def sample_gdf():
+    """A GeoDataFrame with 3 Davidson County tracts and mock data columns."""
+    return gpd.GeoDataFrame(
+        {
+            "GEOID": ["47037001700", "47037001800", "47037001900"],
+            "NAME": ["17", "18", "19"],
+            "NAMELSAD": ["Census Tract 17", "Census Tract 18", "Census Tract 19"],
+            "DP03_0062E": [58000, 41000, 74500],
+            "DP03_0119PE": [12.5, 22.3, 8.7],
+            "DP05_0001E": [5000, 3000, 8000],
+        },
+        geometry=[
+            Polygon([(-86.80, 36.16), (-86.78, 36.16), (-86.78, 36.18), (-86.80, 36.18)]),
+            Polygon([(-86.78, 36.16), (-86.76, 36.16), (-86.76, 36.18), (-86.78, 36.18)]),
+            Polygon([(-86.76, 36.16), (-86.74, 36.16), (-86.74, 36.18), (-86.76, 36.18)]),
         ],
+        crs="EPSG:4326",
+    )
+
+
+@pytest.fixture
+def sample_partners_gdf():
+    """A GeoDataFrame with 3 partner locations."""
+    return gpd.GeoDataFrame(
+        {
+            "partner_name": [
+                "East Nashville Community Center",
+                "Antioch Food Pantry",
+                "Bordeaux Senior Services",
+            ],
+            "address": [
+                "1234 Gallatin Ave Nashville TN 37206",
+                "456 Nolensville Pike Nashville TN 37211",
+                "789 Clarksville Pike Nashville TN 37208",
+            ],
+            "partner_type": ["community_development", "school_summer", "senior_services"],
+        },
+        geometry=[
+            Point(-86.7429, 36.1823),
+            Point(-86.7143, 36.0894),
+            Point(-86.8210, 36.1950),
+        ],
+        crs="EPSG:4326",
+    )
+
+
+@pytest.fixture
+def income_layer_config():
+    """Layer config for Median Household Income."""
+    return {
+        "column": "DP03_0062E",
+        "display_name": "Median Household Income",
+        "colormap": "YlGnBu",
+        "legend_name": "Median Household Income ($)",
+        "format_str": "${:,.0f}",
+        "tooltip_alias": "Income",
+        "default_visible": True,
     }
 
 
-@pytest.fixture
-def sample_census_df():
-    return pd.DataFrame({
-        "GEOID": ["47037001700", "47037001800", "47037001900"],
-        "poverty_rate": [12.5, 22.3, 8.7],
-        "median_household_income": [58000, 41000, 74500],
-        "data_vintage": [
-            "ACS 2022 5-Year Estimates",
-            "ACS 2022 5-Year Estimates",
-            "ACS 2022 5-Year Estimates",
-        ],
-    })
-
-
-@pytest.fixture
-def sample_geocoded_df():
-    return pd.DataFrame({
-        "partner_name": [
-            "East Nashville Community Center",
-            "Antioch Food Pantry",
-            "Bordeaux Senior Services",
-        ],
-        "address": [
-            "1234 Gallatin Ave Nashville TN 37206",
-            "456 Nolensville Pike Nashville TN 37211",
-            "789 Clarksville Pike Nashville TN 37208",
-        ],
-        "partner_type": ["community_development", "school_summer", "senior_services"],
-        "latitude": [36.1823, 36.0894, 36.1950],
-        "longitude": [-86.7429, -86.7143, -86.8210],
-        "geocode_status": ["success", "success", "success"],
-    })
-
-
 # ---------------------------------------------------------------------------
-# Test: build_tract_boundaries_layer
-# ---------------------------------------------------------------------------
-class TestBuildTractBoundariesLayer:
-    def test_returns_geojson_object(self, sample_geojson):
-        result = build_tract_boundaries_layer(sample_geojson)
-        assert isinstance(result, folium.GeoJson), (
-            "build_tract_boundaries_layer must return a folium.GeoJson, not a tuple"
-        )
-
-    def test_not_a_tuple(self, sample_geojson):
-        result = build_tract_boundaries_layer(sample_geojson)
-        assert not isinstance(result, tuple), (
-            "build_tract_boundaries_layer must return a single GeoJson, NOT a tuple"
-        )
-
-
-# ---------------------------------------------------------------------------
-# Test: build_choropleth_layer
-# ---------------------------------------------------------------------------
-class TestBuildChoroplethLayer:
-    def _get_median_income_config(self):
-        for layer in config.CHOROPLETH_LAYERS:
-            if layer["id"] == "median_income":
-                return layer
-        pytest.skip("median_income layer not found in CHOROPLETH_LAYERS")
-
-    def test_returns_tuple(self, sample_geojson, sample_census_df):
-        layer_config = self._get_median_income_config()
-        result = build_choropleth_layer(sample_geojson, sample_census_df, layer_config)
-        assert isinstance(result, tuple), "build_choropleth_layer must return a tuple"
-        assert len(result) == 2, "build_choropleth_layer must return a 2-tuple"
-
-    def test_tuple_contains_geojson_and_colormap(self, sample_geojson, sample_census_df):
-        layer_config = self._get_median_income_config()
-        geojson_layer, colormap = build_choropleth_layer(
-            sample_geojson, sample_census_df, layer_config
-        )
-        assert isinstance(geojson_layer, folium.GeoJson)
-        assert isinstance(colormap, branca.colormap.LinearColormap)
-
-
-# ---------------------------------------------------------------------------
-# Test: build_partner_markers
+# Test: build_partner_markers — pins, not dots
 # ---------------------------------------------------------------------------
 class TestBuildPartnerMarkers:
-    def test_returns_list(self, sample_geocoded_df):
-        result = build_partner_markers(sample_geocoded_df)
-        assert isinstance(result, list)
+    def test_returns_feature_group(self, sample_partners_gdf):
+        partner_cfg = get_partner_config()
+        result = build_partner_markers(sample_partners_gdf, partner_cfg)
+        assert isinstance(result, folium.FeatureGroup)
 
-    def test_returns_circle_markers(self, sample_geocoded_df):
-        result = build_partner_markers(sample_geocoded_df)
-        for marker in result:
-            assert isinstance(marker, folium.CircleMarker)
+    def test_feature_group_name(self, sample_partners_gdf):
+        partner_cfg = get_partner_config()
+        fg = build_partner_markers(sample_partners_gdf, partner_cfg)
+        assert fg.layer_name == "NFP Partners"
 
-    def test_correct_count(self, sample_geocoded_df):
-        result = build_partner_markers(sample_geocoded_df)
-        assert len(result) == len(sample_geocoded_df)
+    def test_markers_are_pins_not_circles(self, sample_partners_gdf):
+        partner_cfg = get_partner_config()
+        fg = build_partner_markers(sample_partners_gdf, partner_cfg)
+        children = list(fg._children.values())
+        for child in children:
+            assert isinstance(child, folium.Marker), (
+                f"Expected folium.Marker (pin), got {type(child).__name__}"
+            )
 
-    def test_unknown_partner_type_uses_fallback_color(self):
-        """Partners with unrecognized partner_type should use FALLBACK_COLOR."""
-        df = pd.DataFrame({
-            "partner_name": ["Unknown Partner"],
-            "address": ["123 Fake St"],
-            "partner_type": ["nonexistent_type"],
-            "latitude": [36.16],
-            "longitude": [-86.78],
-            "geocode_status": ["success"],
-        })
-        result = build_partner_markers(df)
-        assert len(result) == 1
-        marker = result[0]
-        # CircleMarker options should have FALLBACK_COLOR
-        assert isinstance(marker, folium.CircleMarker)
+    def test_correct_marker_count(self, sample_partners_gdf):
+        partner_cfg = get_partner_config()
+        fg = build_partner_markers(sample_partners_gdf, partner_cfg)
+        markers = [c for c in fg._children.values() if isinstance(c, folium.Marker)]
+        assert len(markers) == 3
 
-    def test_empty_dataframe(self):
-        """build_partner_markers should handle empty DataFrame."""
-        df = pd.DataFrame(
-            columns=["partner_name", "address", "partner_type", "latitude", "longitude", "geocode_status"]
+    def test_unknown_partner_type_handled(self):
+        gdf = gpd.GeoDataFrame(
+            {
+                "partner_name": ["Unknown Partner"],
+                "address": ["123 Fake St"],
+                "partner_type": ["nonexistent_type"],
+            },
+            geometry=[Point(-86.78, 36.16)],
+            crs="EPSG:4326",
         )
-        result = build_partner_markers(df)
-        assert isinstance(result, list)
-        assert len(result) == 0
+        partner_cfg = get_partner_config()
+        fg = build_partner_markers(gdf, partner_cfg)
+        markers = [c for c in fg._children.values() if isinstance(c, folium.Marker)]
+        assert len(markers) == 1
 
-    def test_skips_failed_geocodes(self):
-        """Partners with NaN lat/lon should not produce markers."""
-        df = pd.DataFrame({
-            "partner_name": ["Failed Partner"],
-            "address": [""],
-            "partner_type": ["school_summer"],
-            "latitude": [np.nan],
-            "longitude": [np.nan],
-            "geocode_status": ["failed"],
-        })
-        result = build_partner_markers(df)
-        # Failed geocodes should be skipped
-        assert len(result) == 0
+    def test_empty_gdf_returns_empty_group(self):
+        gdf = gpd.GeoDataFrame(
+            columns=["partner_name", "address", "partner_type", "geometry"],
+        )
+        partner_cfg = get_partner_config()
+        fg = build_partner_markers(gdf, partner_cfg)
+        markers = [c for c in fg._children.values() if isinstance(c, folium.Marker)]
+        assert len(markers) == 0
+
+
+# ---------------------------------------------------------------------------
+# Test: build_choropleth_layer — FeatureGroups
+# ---------------------------------------------------------------------------
+class TestBuildChoroplethLayer:
+    def test_returns_tuple(self, sample_gdf, income_layer_config):
+        result = build_choropleth_layer(sample_gdf, income_layer_config)
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_returns_feature_group_and_colormap(self, sample_gdf, income_layer_config):
+        fg, cmap = build_choropleth_layer(sample_gdf, income_layer_config)
+        assert isinstance(fg, folium.FeatureGroup)
+        assert isinstance(cmap, branca.colormap.LinearColormap)
+
+    def test_feature_group_name_matches_display(self, sample_gdf, income_layer_config):
+        fg, _ = build_choropleth_layer(sample_gdf, income_layer_config)
+        assert fg.layer_name == "Median Household Income"
+
+
+# ---------------------------------------------------------------------------
+# Test: build_boundary_layer
+# ---------------------------------------------------------------------------
+class TestBuildBoundaryLayer:
+    def test_returns_feature_group(self, sample_gdf):
+        fg = build_boundary_layer(sample_gdf)
+        assert isinstance(fg, folium.FeatureGroup)
