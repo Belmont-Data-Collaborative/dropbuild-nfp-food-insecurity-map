@@ -205,6 +205,10 @@ partners:
       label: "After-School Programs"
       color: "#999999"
       icon: "child"
+    community_meals:
+      label: "Community Meals"
+      color: "#2E7D32"
+      icon: "utensils"
 
 map_display:
   tiles: cartodbpositron
