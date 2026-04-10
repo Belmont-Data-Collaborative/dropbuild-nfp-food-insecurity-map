@@ -4,10 +4,6 @@
 *.pem
 *.key
 credentials*
-*.parquet
-data/geo/
-data/choropleth/
-data/points/
 data/geocode_cache.csv
 data/source/
 maps/
