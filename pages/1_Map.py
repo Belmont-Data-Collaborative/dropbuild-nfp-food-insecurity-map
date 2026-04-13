@@ -323,7 +323,8 @@ def _render_nfp_logo() -> None:
     b64 = base64.b64encode(logo_bytes).decode()
     st.markdown(
         f'<div style="text-align:center;padding:0.5rem 0;">'
-        f'<img src="data:image/png;base64,{b64}" width="350" />'
+        f'<img src="data:image/png;base64,{b64}" '
+        f'style="width:550px !important;max-width:100%;" />'
         f'</div>',
         unsafe_allow_html=True,
     )
@@ -339,7 +340,7 @@ def _render_bdaic_footer() -> None:
     st.markdown(
         f'<div style="display:flex;align-items:center;gap:10px;'
         f'margin-top:1.5rem;padding-top:0.8rem;border-top:1px solid #eee;">'
-        f'<img src="data:image/png;base64,{b64}" height="40" />'
+        f'<img src="data:image/png;base64,{b64}" style="height:40px;" />'
         f'<span style="font-size:0.85rem;color:#888;">'
         f'Built by the Belmont Data &amp; AI Collaborative</span>'
         f'</div>',
