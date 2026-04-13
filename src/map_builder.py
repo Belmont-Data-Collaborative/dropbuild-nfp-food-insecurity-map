@@ -131,22 +131,14 @@ def build_map_html(
             logger.warning("Could not render Giving Matters layer: %s", exc)
 
     # Partner markers
-    partner_cfg_for_legend: dict | None = None
     if show_partners:
         try:
             partners_gdf = load_partners()
             partner_cfg = get_partner_config()
             partner_fg = build_partner_markers(partners_gdf, partner_cfg)
             partner_fg.add_to(m)
-            partner_cfg_for_legend = partner_cfg
         except FileNotFoundError:
             logger.warning("Partner data not available")
-
-    # Partner type legend on the map (always visible even when sidebar is
-    # collapsed). Placed at bottomleft to avoid colliding with the
-    # choropleth legend at bottomright.
-    if show_partners and partner_cfg_for_legend:
-        _add_partner_type_legend(m, partner_cfg_for_legend)
 
     # LayerControl — pinned to topleft so it never collides with the
     # bottom-right legend stack when many overlays are active.
@@ -157,6 +149,12 @@ def build_map_html(
     # the DOM element is moved. See MISTAKES_DB.md G009.)
     if colormaps:
         _add_bottom_right_legends(m, colormaps, all_layers)
+
+    # Resize handling: when the Streamlit sidebar is toggled, the iframe
+    # width changes but Leaflet doesn't know about it — controls (including
+    # the choropleth legend) can end up outside the visible area.  Calling
+    # invalidateSize() forces Leaflet to recalculate and reposition.
+    _add_resize_handler(m)
 
     return m._repr_html_()
 
@@ -329,61 +327,31 @@ def _add_bottom_right_legends(
     m.get_root().script.add_child(branca.element.Element(wrapped))
 
 
-def _add_partner_type_legend(
-    m: folium.Map,
-    partner_config: dict[str, Any],
-) -> None:
-    """Add partner type color legend to the map at bottomleft.
+def _add_resize_handler(m: folium.Map) -> None:
+    """Add a resize observer so Leaflet repositions controls on iframe resize.
 
-    This legend is always visible on the map regardless of whether the
-    Streamlit sidebar is open or closed.  Uses the same DOMContentLoaded
-    pattern as ``_add_bottom_right_legends`` (see MISTAKES_DB.md G009).
+    When the Streamlit sidebar is toggled the iframe width changes, but
+    Leaflet doesn't automatically recalculate.  Without this, controls
+    (especially the choropleth legend at bottomright) can end up outside
+    the visible map area.
     """
-    import json
-
     import branca.element
 
     map_var = m.get_name()
-    types = partner_config.get("types", {})
-
-    legend_items = [
-        {"color": info["color"], "label": info["label"]}
-        for info in types.values()
-    ]
-    items_json = json.dumps(legend_items)
 
     js = f"""
     (function() {{
-        var items = {items_json};
-        var ctrl = L.control({{position: 'bottomleft'}});
-        ctrl.onAdd = function() {{
-            var div = L.DomUtil.create('div', 'info nfp-partner-legend');
-            div.style.backgroundColor = 'white';
-            div.style.padding = '8px 12px';
-            div.style.borderRadius = '5px';
-            div.style.boxShadow = '0 0 15px rgba(0,0,0,0.2)';
-            div.style.lineHeight = '1.4';
-            div.style.fontSize = '12px';
-            div.style.minWidth = '140px';
-            div.style.maxHeight = '300px';
-            div.style.overflowY = 'auto';
-
-            var html = '<div style="font-weight:600;margin-bottom:6px;">' +
-                       'NFP Partner Types</div>';
-            for (var i = 0; i < items.length; i++) {{
-                html +=
-                    '<div style="display:flex;align-items:center;' +
-                        'gap:6px;margin:3px 0;">' +
-                    '<span style="display:inline-block;width:12px;' +
-                        'height:12px;border-radius:50%;background:' +
-                        items[i].color + ';border:1px solid ' +
-                        'rgba(0,0,0,0.15);flex-shrink:0;"></span>' +
-                    '<span>' + items[i].label + '</span></div>';
-            }}
-            div.innerHTML = html;
-            return div;
-        }};
-        ctrl.addTo({map_var});
+        var map = {map_var};
+        // ResizeObserver fires whenever the map container dimensions change.
+        if (typeof ResizeObserver !== 'undefined') {{
+            new ResizeObserver(function() {{
+                map.invalidateSize();
+            }}).observe(map.getContainer());
+        }}
+        // Fallback: also listen to window resize events.
+        window.addEventListener('resize', function() {{
+            map.invalidateSize();
+        }});
     }})();
     """
 
