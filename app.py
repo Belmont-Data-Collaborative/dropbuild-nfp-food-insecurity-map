@@ -53,7 +53,7 @@ def _inject_custom_css() -> None:
 
     /* Reduce default top padding */
     .stMainBlockContainer {
-        padding-top: 1rem !important;
+        padding-top: 2.5rem !important;
     }
 
     .home-hero {
