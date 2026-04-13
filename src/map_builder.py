@@ -150,13 +150,17 @@ def build_map_html(
     if colormaps:
         _add_bottom_right_legends(m, colormaps, all_layers)
 
-    # Resize handling: when the Streamlit sidebar is toggled, the iframe
-    # width changes but Leaflet doesn't know about it — controls (including
-    # the choropleth legend) can end up outside the visible area.  Calling
-    # invalidateSize() forces Leaflet to recalculate and reposition.
-    _add_resize_handler(m)
+    # Set explicit pixel height on the Figure root so _repr_html_()
+    # emits a single <iframe height="700px"> instead of a responsive
+    # wrapper with padding-bottom:60%.  The responsive wrapper makes
+    # the inner iframe taller than the 700px Streamlit component
+    # iframe when the sidebar collapses (wider viewport → 60% of
+    # width > 700px), which clips the legend off-screen.
+    fig = m.get_root()
+    fig.width = "100%"
+    fig.height = "700px"
 
-    return m._repr_html_()
+    return fig._repr_html_()
 
 
 def _rgba_to_hex(rgba: tuple) -> str:
@@ -238,8 +242,12 @@ def _add_bottom_right_legends(
     (function() {{
         var legendsData = {legends_json};
 
-        // Single combined control — all layer sections in one div.
+        // Use a single L.control at bottomright.  The inner Folium
+        // iframe now has an explicit pixel height (set on the Figure
+        // root) so L.control positions correctly regardless of the
+        // Streamlit sidebar state.
         var ctrl = L.control({{position: 'bottomright'}});
+
         // Direct references: layerName -> section DOM element.
         var sections = {{}};
 
@@ -301,7 +309,6 @@ def _add_bottom_right_legends(
                 }}
 
                 container.appendChild(section);
-                // Store direct reference — no querySelector needed.
                 sections[ld.name] = section;
             }}
 
@@ -323,38 +330,6 @@ def _add_bottom_right_legends(
     # Wrap in DOMContentLoaded so it runs after all map init scripts.
     # m.get_root().script renders our child before the map's own script
     # children, so the map variable doesn't exist yet at parse time.
-    wrapped = f"document.addEventListener('DOMContentLoaded', function() {{{js}}});"
-    m.get_root().script.add_child(branca.element.Element(wrapped))
-
-
-def _add_resize_handler(m: folium.Map) -> None:
-    """Add a resize observer so Leaflet repositions controls on iframe resize.
-
-    When the Streamlit sidebar is toggled the iframe width changes, but
-    Leaflet doesn't automatically recalculate.  Without this, controls
-    (especially the choropleth legend at bottomright) can end up outside
-    the visible map area.
-    """
-    import branca.element
-
-    map_var = m.get_name()
-
-    js = f"""
-    (function() {{
-        var map = {map_var};
-        // ResizeObserver fires whenever the map container dimensions change.
-        if (typeof ResizeObserver !== 'undefined') {{
-            new ResizeObserver(function() {{
-                map.invalidateSize();
-            }}).observe(map.getContainer());
-        }}
-        // Fallback: also listen to window resize events.
-        window.addEventListener('resize', function() {{
-            map.invalidateSize();
-        }});
-    }})();
-    """
-
     wrapped = f"document.addEventListener('DOMContentLoaded', function() {{{js}}});"
     m.get_root().script.add_child(branca.element.Element(wrapped))
 
