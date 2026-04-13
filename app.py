@@ -119,7 +119,6 @@ def _inject_custom_css() -> None:
         color: #888;
         font-size: 0.82rem;
     }
-    .branding-row img { height: 28px; width: auto; }
     .freshness {
         text-align: center;
         font-size: 0.82rem;
@@ -279,18 +278,24 @@ def _render_nav_cards() -> None:
 
 
 def _render_branding_and_freshness() -> None:
-    bdaic_logo = Path("assets/bdaic_logo.png")
-    logo_html = ""
-    if bdaic_logo.exists():
-        logo_html = f'<img src="app/static/{bdaic_logo.name}" alt="BDAIC">'
+    logo_path = Path("assets/bdaic_logo.png")
+    if logo_path.exists():
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            st.image(str(logo_path), width=40)
+        with col2:
+            st.caption("Built by the Belmont Data & AI Collaborative")
+    else:
+        st.markdown(
+            f"""
+            <div class="branding-row">
+                <div>Built by the Belmont Data &amp; AI Collaborative</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     st.markdown(
-        f"""
-        <div class="branding-row">
-            {logo_html}
-            <span>Built by the Belmont Data & AI Collaborative</span>
-        </div>
-        <div class="freshness">Data last updated: {_last_pipeline_run()}</div>
-        """,
+        f'<div class="freshness">Data last updated: {_last_pipeline_run()}</div>',
         unsafe_allow_html=True,
     )
 
