@@ -46,17 +46,9 @@ def _inject_custom_css() -> None:
     st.markdown(
         """
     <style>
-    /* Rename "app" to "Home" in sidebar navigation */
-    [data-testid="stSidebarNav"] li:first-child span,
-    [data-testid="stSidebarNavItems"] li:first-child span {
-        font-size: 0 !important;
-        letter-spacing: 0;
-    }
-    [data-testid="stSidebarNav"] li:first-child span::after,
-    [data-testid="stSidebarNavItems"] li:first-child span::after {
-        content: "Home";
-        font-size: 0.9rem;
-        letter-spacing: normal;
+    /* Hide auto-generated sidebar nav so custom nav with "Home" label is used */
+    [data-testid="stSidebarNav"] {
+        display: none !important;
     }
 
     /* NFP logo text fallback */
@@ -303,10 +295,19 @@ def _render_branding_and_freshness() -> None:
     )
 
 
+def _render_custom_nav() -> None:
+    """Render custom sidebar navigation with 'Home' instead of 'app'."""
+    with st.sidebar:
+        st.page_link("app.py", label="Home")
+        st.page_link("pages/1_Map.py", label="Map")
+        st.page_link("pages/2_About_the_Data.py", label="About the Data")
+
+
 def main() -> None:
     """Render the Home page."""
     _configure_page()
     _inject_custom_css()
+    _render_custom_nav()
     _render_nfp_logo()
     _render_hero()
     _render_description()
