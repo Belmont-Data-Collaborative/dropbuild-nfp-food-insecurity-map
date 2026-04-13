@@ -46,6 +46,30 @@ def _inject_custom_css() -> None:
     st.markdown(
         """
     <style>
+    /* Rename "app" to "Home" in sidebar navigation */
+    [data-testid="stSidebarNav"] li:first-child span,
+    [data-testid="stSidebarNavItems"] li:first-child span {
+        font-size: 0 !important;
+        letter-spacing: 0;
+    }
+    [data-testid="stSidebarNav"] li:first-child span::after,
+    [data-testid="stSidebarNavItems"] li:first-child span::after {
+        content: "Home";
+        font-size: 0.9rem;
+        letter-spacing: normal;
+    }
+
+    /* NFP logo text fallback */
+    .nfp-logo-text {
+        text-align: center;
+        padding: 0.3rem 0 0.5rem;
+    }
+    .nfp-logo-text span {
+        font-size: 1.3rem;
+        font-weight: 700;
+        color: #2E7D32;
+    }
+
     .home-hero {
         background: linear-gradient(135deg, #2E7D32, #1B5E20);
         color: white;
@@ -98,12 +122,12 @@ def _inject_custom_css() -> None:
         display: flex;
         justify-content: center;
         align-items: center;
-        gap: 2rem;
+        gap: 0.5rem;
         margin: 1.5rem 0 0.5rem;
-        color: #666;
-        font-size: 0.9rem;
+        color: #888;
+        font-size: 0.82rem;
     }
-    .branding-row .org { font-weight: 600; color: #444; }
+    .branding-row img { height: 28px; width: auto; }
     .freshness {
         text-align: center;
         font-size: 0.82rem;
@@ -159,6 +183,21 @@ def _last_pipeline_run() -> str:
         return "unknown"
     latest = max(f.stat().st_mtime for f in files)
     return datetime.fromtimestamp(latest).strftime("%Y-%m-%d")
+
+
+def _render_nfp_logo() -> None:
+    """Render NFP logo at top of page. Uses image if available, else text."""
+    logo_path = Path("assets/nfp_logo.png")
+    if logo_path.exists():
+        col1, col2, col3 = st.columns([1, 2, 1])
+        with col2:
+            st.image(str(logo_path), width=250)
+    else:
+        st.markdown(
+            '<div class="nfp-logo-text">'
+            "<span>Nashville Food Project</span></div>",
+            unsafe_allow_html=True,
+        )
 
 
 def _render_hero() -> None:
@@ -248,15 +287,15 @@ def _render_nav_cards() -> None:
 
 
 def _render_branding_and_freshness() -> None:
-    project = get_project()
-    primary = project.get("primary_org", "Nashville Food Project")
-    secondary = project.get("secondary_org", "Belmont University BDAIC")
+    bdaic_logo = Path("assets/bdaic_logo.png")
+    logo_html = ""
+    if bdaic_logo.exists():
+        logo_html = f'<img src="app/static/{bdaic_logo.name}" alt="BDAIC">'
     st.markdown(
         f"""
         <div class="branding-row">
-            <div class="org">{primary}</div>
-            <div>&middot;</div>
-            <div class="org">{secondary}</div>
+            {logo_html}
+            <span>Built by the Belmont Data &amp; AI Collaborative</span>
         </div>
         <div class="freshness">Data last updated: {_last_pipeline_run()}</div>
         """,
@@ -268,6 +307,7 @@ def main() -> None:
     """Render the Home page."""
     _configure_page()
     _inject_custom_css()
+    _render_nfp_logo()
     _render_hero()
     _render_description()
     _render_stats_bar()
