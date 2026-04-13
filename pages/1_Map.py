@@ -52,7 +52,7 @@ def _inject_custom_css() -> None:
 
     /* Reduce default top padding */
     .stMainBlockContainer {
-        padding-top: 0 !important;
+        padding-top: 1rem !important;
     }
 
     /* Map page header (lightweight; the branded hero lives on Home) */
