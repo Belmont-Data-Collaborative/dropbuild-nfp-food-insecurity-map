@@ -287,7 +287,7 @@ def _render_branding_and_freshness() -> None:
         f"""
         <div class="branding-row">
             {logo_html}
-            <span>Built by the Belmont Data &amp; AI Collaborative</span>
+            <span>Built by the Belmont Data & AI Collaborative</span>
         </div>
         <div class="freshness">Data last updated: {_last_pipeline_run()}</div>
         """,
