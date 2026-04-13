@@ -51,15 +51,9 @@ def _inject_custom_css() -> None:
         display: none !important;
     }
 
-    /* NFP logo text fallback */
-    .nfp-logo-text {
-        text-align: center;
-        padding: 0.3rem 0 0.5rem;
-    }
-    .nfp-logo-text span {
-        font-size: 1.3rem;
-        font-weight: 700;
-        color: #2E7D32;
+    /* Reduce default top padding */
+    .stMainBlockContainer {
+        padding-top: 0 !important;
     }
 
     .home-hero {
@@ -110,15 +104,6 @@ def _inject_custom_css() -> None:
         color: #444;
     }
     .stats-bar strong { color: #1B5E20; }
-    .branding-row {
-        display: flex;
-        justify-content: center;
-        align-items: center;
-        gap: 0.5rem;
-        margin: 1.5rem 0 0.5rem;
-        color: #888;
-        font-size: 0.82rem;
-    }
     .freshness {
         text-align: center;
         font-size: 0.82rem;
@@ -177,18 +162,17 @@ def _last_pipeline_run() -> str:
 
 
 def _render_nfp_logo() -> None:
-    """Render NFP logo at top of page. Uses image if available, else text."""
-    logo_path = Path("assets/nfp_logo.png")
-    if logo_path.exists():
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            st.image(str(logo_path), width=250)
-    else:
-        st.markdown(
-            '<div class="nfp-logo-text">'
-            "<span>Nashville Food Project</span></div>",
-            unsafe_allow_html=True,
-        )
+    """Render NFP logo centered above the hero banner."""
+    import base64
+
+    logo_bytes = Path("assets/NFP logo.png").read_bytes()
+    b64 = base64.b64encode(logo_bytes).decode()
+    st.markdown(
+        f'<div style="text-align:center;padding:0.5rem 0;">'
+        f'<img src="data:image/png;base64,{b64}" width="350" />'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_hero() -> None:
@@ -278,22 +262,19 @@ def _render_nav_cards() -> None:
 
 
 def _render_branding_and_freshness() -> None:
-    logo_path = Path("assets/bdaic_logo.png")
-    if logo_path.exists():
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            st.image(str(logo_path), width=40)
-        with col2:
-            st.caption("Built by the Belmont Data & AI Collaborative")
-    else:
-        st.markdown(
-            f"""
-            <div class="branding-row">
-                <div>Built by the Belmont Data &amp; AI Collaborative</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
+    import base64
+
+    logo_bytes = Path("assets/BDAIC logo.png").read_bytes()
+    b64 = base64.b64encode(logo_bytes).decode()
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px;'
+        f'margin-top:1.5rem;padding-top:0.8rem;border-top:1px solid #eee;">'
+        f'<img src="data:image/png;base64,{b64}" height="40" />'
+        f'<span style="font-size:0.85rem;color:#888;">'
+        f'Built by the Belmont Data &amp; AI Collaborative</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
     st.markdown(
         f'<div class="freshness">Data last updated: {_last_pipeline_run()}</div>',
         unsafe_allow_html=True,
