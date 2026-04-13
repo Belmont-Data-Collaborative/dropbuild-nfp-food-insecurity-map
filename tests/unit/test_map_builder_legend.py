@@ -40,7 +40,11 @@ from src.map_builder import build_map_html  # noqa: E402
 
 
 def _get_inner_html(outer_html: str) -> str:
-    """Extract the inner HTML from the folium iframe srcdoc."""
+    """Extract the inner HTML from the folium iframe srcdoc.
+
+    Works whether the output is a bare ``<iframe srcdoc="...">`` (explicit
+    Figure height) or wrapped in a responsive ``<div>`` container.
+    """
     start = outer_html.index('srcdoc="') + 8
     end = outer_html.index('"', start)
     return html_mod.unescape(outer_html[start:end])
