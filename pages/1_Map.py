@@ -47,17 +47,9 @@ def _inject_custom_css() -> None:
     st.markdown(
         """
     <style>
-    /* Rename "app" to "Home" in sidebar navigation */
-    [data-testid="stSidebarNav"] li:first-child span,
-    [data-testid="stSidebarNavItems"] li:first-child span {
-        font-size: 0 !important;
-        letter-spacing: 0;
-    }
-    [data-testid="stSidebarNav"] li:first-child span::after,
-    [data-testid="stSidebarNavItems"] li:first-child span::after {
-        content: "Home";
-        font-size: 0.9rem;
-        letter-spacing: normal;
+    /* Hide auto-generated sidebar nav so custom nav with "Home" label is used */
+    [data-testid="stSidebarNav"] {
+        display: none !important;
     }
 
     /* Map page header (lightweight; the branded hero lives on Home) */
@@ -214,6 +206,11 @@ def _render_sidebar() -> tuple[str, bool, list[str], bool]:
         Tuple of (granularity, show_partners, selected_layers, show_giving_matters).
     """
     with st.sidebar:
+        # Custom navigation with "Home" label
+        st.page_link("app.py", label="Home")
+        st.page_link("pages/1_Map.py", label="Map")
+        st.page_link("pages/2_About_the_Data.py", label="About the Data")
+
         # Geographic Level
         st.markdown(
             '<div class="sidebar-section">Geographic Level</div>',
