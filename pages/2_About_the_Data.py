@@ -44,6 +44,11 @@ def _inject_custom_css() -> None:
         display: none !important;
     }
 
+    /* Reduce default top padding */
+    .stMainBlockContainer {
+        padding-top: 0 !important;
+    }
+
     .docs-header {
         border-left: 4px solid #2E7D32;
         padding: 0.4rem 0 0.4rem 1rem;
@@ -62,32 +67,6 @@ def _inject_custom_css() -> None:
         border-top: 1px solid #eee;
     }
 
-    /* NFP logo text fallback */
-    .nfp-logo-text {
-        text-align: left;
-        padding: 0.3rem 0 0.2rem;
-    }
-    .nfp-logo-text span {
-        font-size: 1.2rem;
-        font-weight: 700;
-        color: #2E7D32;
-    }
-
-    /* BDAIC footer branding */
-    .bdaic-footer {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.8rem 0 0.3rem;
-        margin-top: 1rem;
-        border-top: 1px solid #eee;
-        font-size: 0.78rem;
-        color: #888;
-    }
-    .bdaic-footer img {
-        height: 28px;
-        width: auto;
-    }
     </style>
     """,
         unsafe_allow_html=True,
@@ -279,36 +258,35 @@ def _render_technical_details() -> None:
 
 
 def _render_nfp_logo() -> None:
-    """Render NFP logo at top of page. Uses image if available, else text."""
-    logo_path = Path("assets/nfp_logo.png")
-    if logo_path.exists():
-        st.image(str(logo_path), width=200)
-    else:
-        st.markdown(
-            '<div class="nfp-logo-text">'
-            "<span>Nashville Food Project</span></div>",
-            unsafe_allow_html=True,
-        )
+    """Render NFP logo centered at top of page."""
+    import base64
+    from pathlib import Path
+
+    logo_bytes = Path("assets/NFP logo.png").read_bytes()
+    b64 = base64.b64encode(logo_bytes).decode()
+    st.markdown(
+        f'<div style="text-align:center;padding:0.5rem 0;">'
+        f'<img src="data:image/png;base64,{b64}" width="350" />'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_bdaic_footer() -> None:
     """Render BDAIC branding at page bottom."""
-    logo_path = Path("assets/bdaic_logo.png")
-    if logo_path.exists():
-        st.markdown(
-            '<div class="bdaic-footer">'
-            f'<img src="app/static/{logo_path.name}" alt="BDAIC">'
-            "<span>Built by the Belmont Data &amp; AI Collaborative</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
-    else:
-        st.markdown(
-            '<div class="bdaic-footer">'
-            "<span>Built by the Belmont Data &amp; AI Collaborative</span>"
-            "</div>",
-            unsafe_allow_html=True,
-        )
+    import base64
+
+    logo_bytes = Path("assets/BDAIC logo.png").read_bytes()
+    b64 = base64.b64encode(logo_bytes).decode()
+    st.markdown(
+        f'<div style="display:flex;align-items:center;gap:10px;'
+        f'margin-top:1.5rem;padding-top:0.8rem;border-top:1px solid #eee;">'
+        f'<img src="data:image/png;base64,{b64}" height="40" />'
+        f'<span style="font-size:0.85rem;color:#888;">'
+        f'Built by the Belmont Data &amp; AI Collaborative</span>'
+        f'</div>',
+        unsafe_allow_html=True,
+    )
 
 
 def _render_custom_nav() -> None:
