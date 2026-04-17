@@ -19,3 +19,5 @@ black==24.3.0
 flake8==7.0.0
 pyproj==3.6.1
 fiona==1.9.6
+openpyxl==3.1.5
+anthropic==0.96.0

@@ -22,6 +22,21 @@ from src.config_loader import (
 )
 from src.map_builder import build_map_html, _giving_matters_available
 
+
+def _giving_matters_count() -> int:
+    """Return the feature count in data/points/giving_matters.geojson, or 0."""
+    import json
+    from pathlib import Path
+
+    path = Path("data/points/giving_matters.geojson")
+    if not path.exists():
+        return 0
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return len(json.load(f).get("features", []))
+    except (OSError, json.JSONDecodeError):
+        return 0
+
 # Configure logging
 logging.basicConfig(
     level=config.LOG_LEVEL,
@@ -268,7 +283,14 @@ def _render_sidebar() -> tuple[str, bool, list[str], bool]:
                 value=False,
             )
             if show_giving_matters:
-                st.caption("Organizations from CFMT Giving Matters database")
+                gm_count = _giving_matters_count()
+                if gm_count:
+                    st.caption(
+                        f"{gm_count:,} organizations from CFMT Giving Matters, "
+                        "colored by NFP partner category."
+                    )
+                else:
+                    st.caption("Organizations from CFMT Giving Matters database")
 
         # Export placeholder
         st.markdown(

@@ -17,7 +17,7 @@ This is a **multi-page Streamlit app**: a Home landing page, an interactive Map 
 - **County boundary overlay** — dashed lines for the 14 MSA counties, toggleable
 - **Categorical layer support** — discrete two-tone rendering for binary LILA flags alongside continuous choropleth gradients
 - **Pin markers** — NFP partner locations shown as colored pins with Font Awesome icons
-- **Giving Matters integration ready** — pipeline + UI activate automatically once CFMT data is uploaded to S3 (currently disabled, no UI artifact)
+- **Giving Matters integration active** — CFMT nonprofit directory (1,487 organizations across the 14-county MSA), classified into NFP partner categories via an automated LLM classifier, rendered as category-colored circle markers distinct from NFP partner pins
 - **LayerControl** — toggle data layers, partner markers, and county boundaries directly on the map
 - **YAML-driven config** — add new layers by editing `project.yml` only
 - **Data pipeline** — CLI-based pipeline processes Census, CDC, USDA LILA, and partner data into Parquet/GeoJSON; LILA includes a 2010→2020 tract crosswalk
@@ -181,20 +181,22 @@ data_sources:
 | Low Access Population (1 mi) | USDA Food Access Research Atlas | Area-weighted apportionment to 2020 tracts |
 | Low Income, Low Access Population (1 mi) | USDA Food Access Research Atlas | Area-weighted apportionment to 2020 tracts |
 | NFP Partners | Nashville Food Project | Partner locations (S3) |
-| Giving Matters (when available) | Community Foundation of Middle Tennessee | Nonprofit point data — currently pending CFMT data receipt |
+| Giving Matters | Community Foundation of Middle Tennessee | ~1,487 nonprofit organizations across the MSA, categorized into NFP partner types via an automated LLM classifier (see `scripts/classify_giving_matters.py`) |
 
 ---
 
-## Enabling Giving Matters (when CFMT data arrives)
+## Giving Matters workflow
 
-The pipeline and UI for the Community Foundation of Middle Tennessee's *Giving Matters* dataset are wired and ready. To activate it:
+The *Giving Matters* dataset from the Community Foundation of Middle Tennessee is loaded from a CSV whose `partner_type` column is populated by an automated LLM classifier against the nine NFP partner types (plus an `other` bucket for organizations that don't fit any of them).
 
-1. Upload the CFMT CSV to `s3://bdaic-public-transform/nfp-mapping/partners/giving_matters.csv`.
-2. In `project.yml`, under `data_sources.giving_matters`, set `enabled: true` and fill in `required_columns` with the actual schema (`name_column`, `address_column`, `category_column`).
-3. Run `python -m pipeline --step giving_matters` — this writes `data/points/giving_matters.geojson`.
-4. Reload the Streamlit app. A new "Community Partners" section automatically appears in the sidebar with a `Show Giving Matters Partners` checkbox; selecting it renders cyan circle markers (distinct from NFP partner pins) on the Map page.
+**Refreshing the dataset** (re-classify + re-geocode after CFMT sends updated data):
 
-No code changes are required.
+1. Drop the updated workbook at the project root as `giving_matters.xlsx`.
+2. Run `python scripts/classify_giving_matters.py` — reads the xlsx, classifies each org against the 10 categories via the Claude API, writes `data/mock/giving_matters.csv`. Requires `ANTHROPIC_API_KEY`.
+3. Spot-check the categorization distribution the script prints; edit the CSV directly to override any obvious miscategorizations.
+4. Upload the reviewed CSV to `s3://bdaic-public-transform/nfp-mapping/partners/giving_matters.csv` (or keep it local for development with `USE_MOCK_DATA=true`).
+5. Run `python -m pipeline --step giving_matters` — geocodes each address via Nominatim (with S3-backed cache) and writes `data/points/giving_matters.geojson`.
+6. Reload the Streamlit app. Community Partners toggle appears in the Map sidebar; markers are colored by NFP partner category so they align visually with the NFP partner pin legend.
 
 ---
 

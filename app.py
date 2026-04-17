@@ -141,11 +141,21 @@ def _gather_key_stats() -> dict[str, int | str]:
         except (OSError, json.JSONDecodeError):
             partners = 0
 
+    giving_matters = 0
+    gm_path = Path("data/points/giving_matters.geojson")
+    if gm_path.exists():
+        try:
+            with open(gm_path, "r", encoding="utf-8") as f:
+                giving_matters = len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            giving_matters = 0
+
     return {
         "counties": counties,
         "tracts": tracts,
         "indicators": indicators,
         "partners": partners,
+        "giving_matters": giving_matters,
     }
 
 
@@ -207,13 +217,18 @@ def _render_description() -> None:
 
 def _render_stats_bar() -> None:
     stats = _gather_key_stats()
+    gm_segment = (
+        f" &middot; <strong>{stats['giving_matters']:,}</strong> community partners"
+        if stats["giving_matters"]
+        else ""
+    )
     st.markdown(
         f"""
         <div class="stats-bar">
             Covering <strong>{stats['counties']}</strong> counties &middot;
             <strong>{stats['tracts']:,}</strong> census tracts &middot;
             <strong>{stats['indicators']}</strong> data indicators &middot;
-            <strong>{stats['partners']}</strong> NFP partner locations
+            <strong>{stats['partners']}</strong> NFP partner locations{gm_segment}
         </div>
         """,
         unsafe_allow_html=True,

@@ -151,13 +151,12 @@ data_sources:
     s3_bucket: bdaic-public-transform
     s3_key: "nfp-mapping/partners/giving_matters.csv"
     output_prefix: giving_matters
-    enabled: false  # Set to true once data is uploaded to S3
-    note: "Giving Matters nonprofit data from CFMT. Schema TBD — enable after data receipt and column mapping."
-    # Column mapping will be added here once the schema is known:
-    # required_columns:
-    #   name_column: TBD
-    #   address_column: TBD
-    #   category_column: TBD
+    enabled: true
+    note: "Giving Matters nonprofit data from CFMT. Categories assigned by LLM classification against NFP partner types; see scripts/classify_giving_matters.py."
+    required_columns:
+      name_column: partner_name
+      address_column: address
+      category_column: partner_type
     geocode_cache_key: "nfp-mapping/partners/giving_matters_geocode_cache.csv"
     point_layer_name: "Community Partners (Giving Matters)"
     marker_style: "circle"  # Use circle markers to distinguish from NFP partner pins
@@ -209,6 +208,10 @@ partners:
       label: "Community Meals"
       color: "#2E7D32"
       icon: "utensils"
+    other:
+      label: "Other"
+      color: "#607D8B"
+      icon: "circle"
 
 map_display:
   tiles: cartodbpositron

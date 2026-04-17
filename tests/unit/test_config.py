@@ -95,10 +95,11 @@ class TestConfigLoader:
     def test_get_partner_config(self):
         cfg = config_loader.get_partner_config()
         assert "types" in cfg
-        assert len(cfg["types"]) == 8
+        assert len(cfg["types"]) == 10
         for key in ["school_summer", "medical_health", "transitional_housing",
                      "senior_services", "community_development", "homeless_outreach",
-                     "workforce_development", "after_school"]:
+                     "workforce_development", "after_school", "community_meals",
+                     "other"]:
             assert key in cfg["types"]
             assert "color" in cfg["types"][key]
             assert "label" in cfg["types"][key]

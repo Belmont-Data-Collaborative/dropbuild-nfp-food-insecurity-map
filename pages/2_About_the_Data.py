@@ -178,9 +178,9 @@ def _render_data_sources() -> None:
             """
             - **What it shows:** geocoded locations of Nashville Food Project partner
               organizations
-            - **Categories:** 8 partner types (school/summer, medical/health,
+            - **Categories:** nine partner types (school/summer, medical/health,
               transitional housing, senior services, community development,
-              homeless outreach, workforce development, after-school)
+              homeless outreach, workforce development, after-school, community meals)
             - **Source:** Nashville Food Project partner directory
             - **Update process:** addresses are geocoded via Nominatim and cached
               in S3; geocoding accuracy depends on the address quality of source
@@ -192,11 +192,16 @@ def _render_data_sources() -> None:
         st.markdown(
             """
             - **What it shows:** nonprofit and community organization locations from
-              the CFMT Giving Matters database
-            - **Source:** Community Foundation of Middle Tennessee
-            - **Status:** **Integration pending** \u2014 data not yet received from CFMT.
-              The pipeline is wired and will activate automatically once the
-              dataset is uploaded to S3 and the column mapping is finalized.
+              the CFMT Giving Matters database, spanning the Nashville MSA
+            - **Source:** Community Foundation of Middle Tennessee (CFMT)
+            - **Categories:** classified against the nine NFP partner types (plus an
+              **Other** bucket for organizations that do not fit an NFP category) via
+              an automated name-based classifier. Category assignments are
+              approximations intended for exploratory filtering, not authoritative
+              program labels.
+            - **Geocoding:** addresses are resolved via Nominatim and cached; rows
+              with coordinates outside the Nashville MSA bounding box are dropped
+              to guard against geocoding errors.
             """
         )
 

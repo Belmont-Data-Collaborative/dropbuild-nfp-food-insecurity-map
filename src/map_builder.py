@@ -125,7 +125,8 @@ def build_map_html(
 
             gm_cfg = get_data_sources().get("giving_matters", {})
             gm_gdf = gpd.read_file(str(_GIVING_MATTERS_GEOJSON))
-            gm_fg = build_giving_matters_layer(gm_gdf, gm_cfg)
+            partner_types = get_partner_config().get("types", {})
+            gm_fg = build_giving_matters_layer(gm_gdf, gm_cfg, partner_types)
             gm_fg.add_to(m)
         except (FileNotFoundError, ValueError, OSError) as exc:
             logger.warning("Could not render Giving Matters layer: %s", exc)

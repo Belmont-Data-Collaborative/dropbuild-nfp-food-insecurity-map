@@ -447,6 +447,7 @@ def build_boundary_layer(
 def build_giving_matters_layer(
     gdf: gpd.GeoDataFrame,
     config: dict[str, Any],
+    partner_types: dict[str, dict[str, str]] | None = None,
 ) -> folium.FeatureGroup:
     """Render Giving Matters organizations as circle markers.
 
@@ -454,16 +455,24 @@ def build_giving_matters_layer(
     the layer visually distinguishes from NFP partner pins. Toggleable via
     LayerControl.
 
+    If ``partner_types`` is provided and a feature's ``category`` value
+    matches a partner-type id, the marker takes that type's color and the
+    popup shows the human-friendly label. Otherwise the marker falls back
+    to ``config.default_color`` and displays the raw category string.
+
     Args:
         gdf: GeoDataFrame with Point geometry; expected columns may include
             ``name``, ``address``, ``category``.
         config: ``data_sources.giving_matters`` from project.yml.
+        partner_types: Optional ``partners.types`` mapping from project.yml
+            used to resolve category ids into colors and display labels.
 
     Returns:
         FeatureGroup of CircleMarkers.
     """
     layer_name = config.get("point_layer_name", "Community Partners (Giving Matters)")
-    color = config.get("default_color", "#17BECF")
+    default_color = config.get("default_color", "#17BECF")
+    types = partner_types or {}
 
     fg = folium.FeatureGroup(name=layer_name, show=False)
 
@@ -473,25 +482,34 @@ def build_giving_matters_layer(
 
         name = row.get("name", "Community Partner")
         address = row.get("address", "")
-        category = row.get("category", "")
+        raw_category = str(row.get("category", "") or "").strip()
+
+        type_meta = types.get(raw_category) if raw_category else None
+        if type_meta:
+            color = type_meta.get("color", default_color)
+            category_label = type_meta.get("label", raw_category)
+        else:
+            color = default_color
+            category_label = raw_category
+
         popup_html = (
             f'<div style="min-width: 200px;">'
             f"<strong>{name}</strong><br>"
         )
-        if category:
-            popup_html += f"<em>{category}</em><br>"
+        if category_label:
+            popup_html += f"<em>{category_label}</em><br>"
         if address:
             popup_html += f"{address}"
         popup_html += "</div>"
 
         folium.CircleMarker(
             location=[row.geometry.y, row.geometry.x],
-            radius=6,
+            radius=1.5,
             color=color,
             fill=True,
             fill_color=color,
-            fill_opacity=0.7,
-            weight=1,
+            fill_opacity=0.8,
+            weight=0.5,
             popup=folium.Popup(popup_html, max_width=300),
             tooltip=str(name),
         ).add_to(fg)
