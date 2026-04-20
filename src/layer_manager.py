@@ -43,6 +43,8 @@ _ICON_COLOR_MAP = {
     "#A65628": "darkred",
     "#F781BF": "pink",
     "#999999": "gray",
+    "#2E7D32": "darkgreen",
+    "#607D8B": "cadetblue",
 }
 
 
@@ -51,11 +53,49 @@ def _hex_to_icon_color(hex_color: str) -> str:
     return _ICON_COLOR_MAP.get(hex_color, "blue")
 
 
+def _make_pin_marker(
+    *,
+    lat: float,
+    lon: float,
+    name: str,
+    address: str,
+    category_id: str,
+    category_label: str,
+    color: str,
+    icon_name: str,
+) -> folium.Marker:
+    """Shared helper: build a single pin marker (folium.Marker + folium.Icon).
+
+    Used by both NFP partner and Giving Matters marker builders so the two
+    sources render visually identically — one pin style, one color scheme,
+    one popup shape.
+    """
+    popup_html = (
+        f'<div style="min-width: 200px;">'
+        f"<strong>{name}</strong><br>"
+        f"<em>{category_label}</em><br>"
+        f"{address}"
+        f"</div>"
+    )
+    return folium.Marker(
+        location=[lat, lon],
+        popup=folium.Popup(popup_html, max_width=300),
+        tooltip=str(name),
+        icon=folium.Icon(
+            color=_hex_to_icon_color(color),
+            icon_color=color,
+            icon=icon_name,
+            prefix="fa",
+        ),
+    )
+
+
 def build_partner_markers(
     partners_gdf: gpd.GeoDataFrame,
     partner_config: dict[str, Any],
+    selected_categories: tuple[str, ...] | set[str] | None = None,
 ) -> folium.FeatureGroup:
-    """Build pin markers for partner locations as a toggleable FeatureGroup.
+    """Build pin markers for NFP partner locations as a toggleable FeatureGroup.
 
     Uses folium.Marker with folium.Icon (Font Awesome) for each partner.
     Each partner type gets a distinct colored pin.
@@ -63,19 +103,26 @@ def build_partner_markers(
     Args:
         partners_gdf: GeoDataFrame with partner_name, partner_type, geometry.
         partner_config: Partner configuration from project.yml.
+        selected_categories: If provided and non-empty, only rows whose
+            ``partner_type`` is in this set are rendered. ``None`` or empty
+            means render everything.
 
     Returns:
         FeatureGroup containing all partner Markers.
     """
-    fg = folium.FeatureGroup(name="NFP Partners", show=True)
+    fg = folium.FeatureGroup(name="Community Partners", show=True)
     types_cfg = partner_config.get("types", {})
     fallback_color = "#CCCCCC"
+    filter_set = set(selected_categories) if selected_categories else None
 
     for _, row in partners_gdf.iterrows():
         if row.geometry is None:
             continue
 
         partner_type = row.get("partner_type", "unknown")
+        if filter_set is not None and partner_type not in filter_set:
+            continue
+
         type_cfg = types_cfg.get(partner_type, {})
         color = type_cfg.get("color", fallback_color)
         icon_name = type_cfg.get("icon", "map-marker")
@@ -89,27 +136,103 @@ def build_partner_markers(
                 row.get("partner_name", "Unknown"),
             )
 
-        popup_html = (
-            f'<div style="min-width: 200px;">'
-            f'<strong>{row.get("partner_name", "Unknown")}</strong><br>'
-            f"<em>{label}</em><br>"
-            f'{row.get("address", "")}'
-            f"</div>"
-        )
-
-        icon_color = _hex_to_icon_color(color)
-
-        folium.Marker(
-            location=[row.geometry.y, row.geometry.x],
-            popup=folium.Popup(popup_html, max_width=300),
-            tooltip=row.get("partner_name", ""),
-            icon=folium.Icon(
-                color=icon_color,
-                icon_color=color,
-                icon=icon_name,
-                prefix="fa",
-            ),
+        _make_pin_marker(
+            lat=row.geometry.y,
+            lon=row.geometry.x,
+            name=row.get("partner_name", "Unknown"),
+            address=row.get("address", ""),
+            category_id=partner_type,
+            category_label=label,
+            color=color,
+            icon_name=icon_name,
         ).add_to(fg)
+
+    return fg
+
+
+def build_community_partners_layer(
+    partners_gdf: gpd.GeoDataFrame | None,
+    gm_gdf: gpd.GeoDataFrame | None,
+    partner_config: dict[str, Any],
+    gm_config: dict[str, Any],
+    selected_categories: tuple[str, ...] | set[str] | None = None,
+) -> folium.FeatureGroup:
+    """Unified Community Partners layer: NFP partners + Giving Matters orgs.
+
+    Both sources render as the same Font Awesome pin style, colored by NFP
+    partner type, inside a single MarkerCluster so 1,000+ points stay
+    readable at MSA zoom. The two sources are not visually distinguished —
+    per the UI decision, they are both treated as "Community Partners".
+
+    Args:
+        partners_gdf: NFP partner GeoDataFrame (may be None if unavailable).
+        gm_gdf: Giving Matters GeoDataFrame (may be None if unavailable).
+        partner_config: ``partners`` block from project.yml.
+        gm_config: ``data_sources.giving_matters`` block from project.yml.
+        selected_categories: Tuple/set of partner_type ids to show. Empty
+            or None renders all categories.
+
+    Returns:
+        FeatureGroup containing one MarkerCluster with all filtered pins.
+    """
+    from folium.plugins import MarkerCluster
+
+    fg = folium.FeatureGroup(name="Community Partners", show=True)
+    cluster = MarkerCluster(
+        name="Community Partners",
+        show_coverage_on_hover=True,
+        zoom_to_bounds_on_click=True,
+        spiderfy_on_max_zoom=True,
+        disable_clustering_at_zoom=14,
+    )
+    cluster.add_to(fg)
+
+    types_cfg = partner_config.get("types", {})
+    default_color = gm_config.get("default_color", "#17BECF")
+    filter_set = set(selected_categories) if selected_categories else None
+
+    def _include(type_id: str) -> bool:
+        return filter_set is None or type_id in filter_set
+
+    # NFP partners — always keyed on ``partner_type``
+    if partners_gdf is not None:
+        for _, row in partners_gdf.iterrows():
+            if row.geometry is None:
+                continue
+            type_id = str(row.get("partner_type", "")).strip()
+            if not _include(type_id):
+                continue
+            type_cfg = types_cfg.get(type_id, {})
+            color = type_cfg.get("color", "#CCCCCC")
+            icon_name = type_cfg.get("icon", "map-marker")
+            label = type_cfg.get("label", type_id or "Unknown Type")
+            _make_pin_marker(
+                lat=row.geometry.y, lon=row.geometry.x,
+                name=row.get("partner_name", "Unknown"),
+                address=row.get("address", ""),
+                category_id=type_id, category_label=label,
+                color=color, icon_name=icon_name,
+            ).add_to(cluster)
+
+    # Giving Matters — keyed on ``category`` (same id space as partner types)
+    if gm_gdf is not None:
+        for _, row in gm_gdf.iterrows():
+            if row.geometry is None:
+                continue
+            type_id = str(row.get("category", "")).strip()
+            if not _include(type_id):
+                continue
+            type_cfg = types_cfg.get(type_id, {})
+            color = type_cfg.get("color", default_color)
+            icon_name = type_cfg.get("icon", "circle")
+            label = type_cfg.get("label", type_id)
+            _make_pin_marker(
+                lat=row.geometry.y, lon=row.geometry.x,
+                name=row.get("name", "Community Partner"),
+                address=row.get("address", ""),
+                category_id=type_id, category_label=label,
+                color=color, icon_name=icon_name,
+            ).add_to(cluster)
 
     return fg
 
@@ -448,16 +571,19 @@ def build_giving_matters_layer(
     gdf: gpd.GeoDataFrame,
     config: dict[str, Any],
     partner_types: dict[str, dict[str, str]] | None = None,
+    selected_categories: tuple[str, ...] | set[str] | None = None,
 ) -> folium.FeatureGroup:
-    """Render Giving Matters organizations as circle markers.
+    """Render Giving Matters organizations as pin markers inside a MarkerCluster.
 
-    Per spec_updates_2.md §3.4, circle markers are used (not pin markers) so
-    the layer visually distinguishes from NFP partner pins. Toggleable via
-    LayerControl.
+    Per spec_updates_2.md §3.4 the Giving Matters layer is distinct from NFP
+    partner pins; originally circle markers were used to convey that. Now
+    that categories are aligned with NFP partner types we use the same
+    pin-icon style (folium.Marker + folium.Icon with Font Awesome) but wrap
+    them in a MarkerCluster so the 1,000+ points remain readable at MSA zoom.
 
     If ``partner_types`` is provided and a feature's ``category`` value
-    matches a partner-type id, the marker takes that type's color and the
-    popup shows the human-friendly label. Otherwise the marker falls back
+    matches a partner-type id, the pin takes that type's color + icon and
+    the popup shows the human-friendly label. Otherwise the pin falls back
     to ``config.default_color`` and displays the raw category string.
 
     Args:
@@ -465,31 +591,54 @@ def build_giving_matters_layer(
             ``name``, ``address``, ``category``.
         config: ``data_sources.giving_matters`` from project.yml.
         partner_types: Optional ``partners.types`` mapping from project.yml
-            used to resolve category ids into colors and display labels.
+            used to resolve category ids into colors, icons, and display labels.
+        selected_categories: If provided and non-empty, only rows whose
+            ``category`` value is in this set are rendered. ``None`` or empty
+            means render everything (no filter).
 
     Returns:
-        FeatureGroup of CircleMarkers.
+        FeatureGroup containing a MarkerCluster of pin Markers.
     """
+    from folium.plugins import MarkerCluster
+
     layer_name = config.get("point_layer_name", "Community Partners (Giving Matters)")
     default_color = config.get("default_color", "#17BECF")
     types = partner_types or {}
+    filter_set = set(selected_categories) if selected_categories else None
 
     fg = folium.FeatureGroup(name=layer_name, show=False)
+
+    # Cluster 1k+ points into aggregate bubbles that spiderfy on click.
+    # disableClusteringAtZoom=14 shows individual markers at street zoom so
+    # users can see NFP-category colors once they've zoomed in.
+    cluster = MarkerCluster(
+        name=layer_name,
+        show_coverage_on_hover=True,
+        zoom_to_bounds_on_click=True,
+        spiderfy_on_max_zoom=True,
+        disable_clustering_at_zoom=14,
+    )
+    cluster.add_to(fg)
 
     for _, row in gdf.iterrows():
         if row.geometry is None:
             continue
 
+        raw_category = str(row.get("category", "") or "").strip()
+        if filter_set is not None and raw_category not in filter_set:
+            continue
+
         name = row.get("name", "Community Partner")
         address = row.get("address", "")
-        raw_category = str(row.get("category", "") or "").strip()
 
         type_meta = types.get(raw_category) if raw_category else None
         if type_meta:
             color = type_meta.get("color", default_color)
+            icon_name = type_meta.get("icon", "circle")
             category_label = type_meta.get("label", raw_category)
         else:
             color = default_color
+            icon_name = "circle"
             category_label = raw_category
 
         popup_html = (
@@ -502,17 +651,19 @@ def build_giving_matters_layer(
             popup_html += f"{address}"
         popup_html += "</div>"
 
-        folium.CircleMarker(
+        icon_color = _hex_to_icon_color(color)
+
+        folium.Marker(
             location=[row.geometry.y, row.geometry.x],
-            radius=1.5,
-            color=color,
-            fill=True,
-            fill_color=color,
-            fill_opacity=0.8,
-            weight=0.5,
             popup=folium.Popup(popup_html, max_width=300),
             tooltip=str(name),
-        ).add_to(fg)
+            icon=folium.Icon(
+                color=icon_color,
+                icon_color=color,
+                icon=icon_name,
+                prefix="fa",
+            ),
+        ).add_to(cluster)
 
     return fg
 

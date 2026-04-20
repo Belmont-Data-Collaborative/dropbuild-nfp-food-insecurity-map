@@ -217,18 +217,14 @@ def _render_description() -> None:
 
 def _render_stats_bar() -> None:
     stats = _gather_key_stats()
-    gm_segment = (
-        f" &middot; <strong>{stats['giving_matters']:,}</strong> community partners"
-        if stats["giving_matters"]
-        else ""
-    )
+    community_partners = stats["partners"] + stats["giving_matters"]
     st.markdown(
         f"""
         <div class="stats-bar">
             Covering <strong>{stats['counties']}</strong> counties &middot;
             <strong>{stats['tracts']:,}</strong> census tracts &middot;
             <strong>{stats['indicators']}</strong> data indicators &middot;
-            <strong>{stats['partners']}</strong> NFP partner locations{gm_segment}
+            <strong>{community_partners:,}</strong> community partners
         </div>
         """,
         unsafe_allow_html=True,

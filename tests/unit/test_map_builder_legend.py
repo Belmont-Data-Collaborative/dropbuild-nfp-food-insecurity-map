@@ -96,7 +96,7 @@ class TestNoBrancaTopright:
 
     def test_no_topright_position_in_single_layer(self, sample_gdf):
         """Single layer map must not contain position: 'topright' from branca."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "position: 'topright'" not in inner, (
             "branca colormap must not be added via cmap.add_to(m) — "
@@ -104,7 +104,7 @@ class TestNoBrancaTopright:
         )
 
     def test_no_topright_position_in_multi_layer(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         assert "position: 'topright'" not in inner
 
@@ -120,7 +120,7 @@ class TestSingleCombinedLegend:
         """Legend must NOT create one L.control per layer inside a loop.
         Multiple stacked controls cause reflow when one is hidden,
         shifting other legends out of the visible map area."""
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         # A forEach that creates L.control inside it = one control per layer
         assert "forEach" not in inner or "L.control" not in inner.split("forEach")[1].split("}")[0], (
@@ -131,7 +131,7 @@ class TestSingleCombinedLegend:
     def test_uses_direct_references_not_queryselector(self, sample_gdf):
         """Legend toggling must use direct JS object references, not
         querySelector which can match wrong elements."""
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         assert "querySelector(" not in inner, (
             "Must use direct JS references for legend toggling, "
@@ -147,36 +147,36 @@ class TestBottomRightLegendControl:
     directly in the map's script section."""
 
     def test_bottomright_position_in_single_layer(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "'bottomright'" in inner, (
             "Legend must use L.control({position: 'bottomright'})"
         )
 
     def test_bottomright_position_in_multi_layer(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         assert "'bottomright'" in inner
 
     def test_legend_has_data_layer_name(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "data-layer-name" in inner
 
     def test_legend_contains_layer_display_name(self, sample_gdf):
         """Legend must show the human-readable layer name."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "Median Household Income" in inner
 
     def test_legend_contains_gradient(self, sample_gdf):
         """Legend must contain a CSS gradient for the color scale."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "linear-gradient" in inner
 
     def test_no_legend_when_no_layers(self):
-        outer = build_map_html("tract", False, ())
+        outer = build_map_html("tract", ())
         inner = _get_inner_html(outer)
         assert "data-layer-name" not in inner
         assert "'bottomright'" not in inner
@@ -192,7 +192,7 @@ class TestLegendScriptOrder:
     def test_legend_script_deferred_to_domcontentloaded(self, sample_gdf):
         """The legend script must be wrapped in DOMContentLoaded so it
         runs after the map variable is initialized."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "DOMContentLoaded" in inner, (
             "Legend script must be deferred via DOMContentLoaded "
@@ -201,7 +201,7 @@ class TestLegendScriptOrder:
 
     def test_no_setinterval_polling(self, sample_gdf):
         """Must not use setInterval to poll for elements — unreliable."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "setInterval" not in inner, (
             "Legend script must not poll with setInterval — "
@@ -217,18 +217,18 @@ class TestLayerControlEvents:
     when layers are toggled via the in-map LayerControl."""
 
     def test_overlayadd_listener(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         assert "overlayadd" in inner
 
     def test_overlayremove_listener(self, sample_gdf):
-        outer = build_map_html("tract", False, ("DP03_0062E", "DP03_0119PE"))
+        outer = build_map_html("tract", ("DP03_0062E", "DP03_0119PE"))
         inner = _get_inner_html(outer)
         assert "overlayremove" in inner
 
     def test_uses_map_variable_directly(self, sample_gdf):
         """Must use the folium map variable name, not iterate window."""
-        outer = build_map_html("tract", False, ("DP03_0062E",))
+        outer = build_map_html("tract", ("DP03_0062E",))
         inner = _get_inner_html(outer)
         assert "for (var key in window)" not in inner
         # Verify it uses the actual map variable for event binding

@@ -37,6 +37,27 @@ def _giving_matters_count() -> int:
     except (OSError, json.JSONDecodeError):
         return 0
 
+
+@st.cache_data(ttl=3600)
+def _giving_matters_category_ids() -> frozenset[str]:
+    """Return the set of unique category ids present in the GeoJSON."""
+    import json
+    from pathlib import Path
+
+    path = Path("data/points/giving_matters.geojson")
+    if not path.exists():
+        return frozenset()
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            features = json.load(f).get("features", [])
+        return frozenset(
+            str(f.get("properties", {}).get("category", "")).strip()
+            for f in features
+            if f.get("properties", {}).get("category")
+        )
+    except (OSError, json.JSONDecodeError):
+        return frozenset()
+
 # Configure logging
 logging.basicConfig(
     level=config.LOG_LEVEL,
@@ -163,18 +184,63 @@ def _render_page_header(granularity: str) -> None:
     )
 
 
-def _render_partner_legend() -> None:
-    """Render partner type legend with colored dots."""
-    partner_cfg = get_partner_config()
-    for type_key, type_info in partner_cfg["types"].items():
-        st.markdown(
-            f'<div class="legend-item">'
-            f'<span class="legend-dot" style="background-color: '
-            f'{type_info["color"]};"></span>'
-            f'{type_info["label"]}'
-            f"</div>",
-            unsafe_allow_html=True,
+def _render_partner_category_selector(
+    types_cfg: dict[str, dict[str, str]],
+) -> tuple[str, ...]:
+    """Render per-category checkboxes with a colored dot beside each label.
+
+    The selector doubles as the legend: each checkbox row shows a colored
+    dot matching the pin color for that partner type. Checking a box shows
+    pins of that category on the map; unchecking hides them. If every box
+    is unchecked, the whole Community Partners layer is hidden.
+
+    Returns the tuple of partner_type ids currently selected.
+    """
+    total = _community_partners_total()
+    if total:
+        st.caption(
+            f"{total:,} community partners across the MSA "
+            "(NFP partners + CFMT Giving Matters organizations)."
         )
+
+    selected: list[str] = []
+    for type_id, type_info in types_cfg.items():
+        color = type_info.get("color", "#CCCCCC")
+        label = type_info.get("label", type_id)
+        col_dot, col_cbox = st.columns([1, 10], gap="small")
+        with col_dot:
+            st.markdown(
+                f'<div style="width:14px;height:14px;background:{color};'
+                f'border-radius:50%;margin-top:0.55rem;"></div>',
+                unsafe_allow_html=True,
+            )
+        with col_cbox:
+            if st.checkbox(
+                label, value=True, key=f"partner_type_{type_id}",
+                label_visibility="visible",
+            ):
+                selected.append(type_id)
+    return tuple(selected)
+
+
+def _community_partners_total() -> int:
+    """Return NFP partner count + Giving Matters count for the caption."""
+    import json
+    from pathlib import Path
+
+    total = 0
+    for path in (
+        Path("data/points/partners.geojson"),
+        Path("data/points/giving_matters.geojson"),
+    ):
+        if not path.exists():
+            continue
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                total += len(json.load(f).get("features", []))
+        except (OSError, json.JSONDecodeError):
+            pass
+    return total
 
 
 def _render_data_freshness() -> None:
@@ -191,11 +257,13 @@ def _render_data_freshness() -> None:
         )
 
 
-def _render_sidebar() -> tuple[str, bool, list[str], bool]:
+def _render_sidebar() -> tuple[str, list[str], tuple[str, ...]]:
     """Render sidebar controls and return user selections.
 
     Returns:
-        Tuple of (granularity, show_partners, selected_layers, show_giving_matters).
+        Tuple of (granularity, selected_layers, selected_partner_categories).
+        The last tuple holds the partner_type ids to render in the unified
+        Community Partners layer; empty means the layer is hidden.
     """
     with st.sidebar:
         # Custom navigation with "Home" label
@@ -261,36 +329,14 @@ def _render_sidebar() -> tuple[str, bool, list[str], bool]:
                 f"Switch to Census Tracts to view: {names}"
             )
 
-        # Partner Locations
+        # Community Partners — unified NFP + Giving Matters layer.
+        # Per-category checkboxes double as the color legend.
         st.markdown(
-            '<div class="sidebar-section">Partner Locations</div>',
+            '<div class="sidebar-section">Community Partners</div>',
             unsafe_allow_html=True,
         )
-        show_partners = st.checkbox("Show NFP Partners", value=True)
-
-        if show_partners:
-            _render_partner_legend()
-
-        # Community Partners (Giving Matters) — only when data is available
-        show_giving_matters = False
-        if _giving_matters_available():
-            st.markdown(
-                '<div class="sidebar-section">Community Partners</div>',
-                unsafe_allow_html=True,
-            )
-            show_giving_matters = st.checkbox(
-                "Show Giving Matters Partners",
-                value=False,
-            )
-            if show_giving_matters:
-                gm_count = _giving_matters_count()
-                if gm_count:
-                    st.caption(
-                        f"{gm_count:,} organizations from CFMT Giving Matters, "
-                        "colored by NFP partner category."
-                    )
-                else:
-                    st.caption("Organizations from CFMT Giving Matters database")
+        types_cfg = get_partner_config().get("types", {})
+        selected_partner_categories = _render_partner_category_selector(types_cfg)
 
         # Export placeholder
         st.markdown(
@@ -306,22 +352,20 @@ def _render_sidebar() -> tuple[str, bool, list[str], bool]:
         )
         _render_data_freshness()
 
-    return granularity, show_partners, selected_layers, show_giving_matters
+    return granularity, selected_layers, selected_partner_categories
 
 
 def _render_map(
     granularity: str,
-    show_partners: bool,
     selected_layers: list[str],
-    show_giving_matters: bool,
+    selected_partner_categories: tuple[str, ...],
 ) -> None:
     """Render the Folium map and export button."""
     with st.spinner("Building map..."):
         map_html = build_map_html(
             granularity,
-            show_partners,
             tuple(selected_layers),
-            show_giving_matters=show_giving_matters,
+            selected_partner_categories=selected_partner_categories,
         )
 
     components.html(map_html, height=700, scrolling=False)
@@ -375,11 +419,11 @@ def main() -> None:
     _configure_page()
     _inject_custom_css()
 
-    granularity, show_partners, selected_layers, show_giving_matters = _render_sidebar()
+    granularity, selected_layers, selected_partner_categories = _render_sidebar()
 
     _render_nfp_logo()
     _render_page_header(granularity)
-    _render_map(granularity, show_partners, selected_layers, show_giving_matters)
+    _render_map(granularity, selected_layers, selected_partner_categories)
     _render_bdaic_footer()
 
 
