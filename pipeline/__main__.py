@@ -109,7 +109,11 @@ def run_giving_matters_step() -> None:
     if "giving_matters" not in sources:
         logger.info("giving_matters not configured in project.yml — skipping")
         return
-    process_giving_matters(sources["giving_matters"])
+    process_giving_matters(
+        sources["giving_matters"],
+        use_mock=config.USE_MOCK_DATA,
+        mock_dir=config.MOCK_DATA_DIR,
+    )
 
 
 def run_partners_step() -> None:

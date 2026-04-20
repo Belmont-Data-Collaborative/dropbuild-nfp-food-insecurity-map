@@ -98,21 +98,32 @@ geography, not direct measurements. LILA is **tract-only** — the layer is
 disabled in the sidebar at ZIP granularity with a tooltip pointing the user
 back to the Census Tracts view.
 
-## A18: Giving Matters Integration is Activation-Ready
-The CFMT *Giving Matters* dataset has not yet been received. The pipeline
-step (`pipeline/process_giving_matters.py`) and the sidebar / map render
-path are wired but **deactivated**:
+## A18: Giving Matters Categorization is LLM-Assigned
+The CFMT *Giving Matters* dataset contains organization names and
+addresses but **no native category column**, so categories are assigned by
+an automated LLM classifier (`scripts/classify_giving_matters.py`) against
+the nine NFP partner types plus an `other` bucket for organizations that
+don't fit any NFP category:
 
-- `data_sources.giving_matters.enabled: false` in `project.yml`
-- `process_giving_matters` returns `None` immediately when disabled, on
-  `NoSuchKey`/`NoSuchBucket`/`404`, or when `required_columns` are missing
-- The sidebar "Community Partners" section only renders when
-  `data/points/giving_matters.geojson` exists
-- The map renderer adds the Giving Matters layer only when both the file
-  exists AND the user checks the sidebar checkbox
-
-Activation requires only data + a config flip (no code changes). See the
-README "Enabling Giving Matters" section.
+- The classifier uses the Anthropic Messages API with structured outputs
+  (Pydantic schema) to constrain responses to valid category ids. Names,
+  city, and county are provided as context; the classifier is instructed
+  to return `other` when no category clearly applies rather than
+  force-fit.
+- Roughly half of organizations fall into `other` because the CFMT
+  directory is broad (arts, animal welfare, civic advocacy, etc.) while
+  the NFP partner categories are narrowly food-insecurity-adjacent. This
+  is expected.
+- Categorizations are **approximations** suitable for exploratory
+  filtering on the map, not authoritative program labels. The About the
+  Data page documents this.
+- The classifier output lives at `data/mock/giving_matters.csv` locally
+  and should be uploaded to
+  `s3://bdaic-public-transform/nfp-mapping/partners/giving_matters.csv`
+  for production. See README §"Giving Matters workflow".
+- Graceful skip behavior is preserved: `process_giving_matters` still
+  returns `None` when `enabled: false`, the S3 key is missing, or
+  required columns are absent.
 
 ## A19: County Boundaries Use Dashed Lines
 The 14 MSA county boundaries are rendered as a separate `FeatureGroup` with

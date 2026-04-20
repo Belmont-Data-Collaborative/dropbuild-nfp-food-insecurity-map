@@ -23,9 +23,10 @@ from src.data_loader import DataLoadError, load_geodata
 from src.layer_manager import (
     build_boundary_layer,
     build_choropleth_layer,
+    build_community_partners_layer,
     build_county_boundaries_layer,
-    build_giving_matters_layer,
-    build_partner_markers,
+    build_giving_matters_layer,  # noqa: F401  (kept for external test imports)
+    build_partner_markers,  # noqa: F401  (kept for external test imports)
 )
 from src.partner_loader import load_partners
 
@@ -46,18 +47,22 @@ def _giving_matters_available() -> bool:
 @st.cache_data(ttl=3600)
 def build_map_html(
     granularity: str,
-    show_partners: bool,
     selected_layers: tuple[str, ...],
-    show_giving_matters: bool = False,
+    selected_partner_categories: tuple[str, ...] = (),
 ) -> str:
     """Build a complete Folium map and return its HTML string.
 
-    Cached by (granularity, show_partners, selected_layers).
+    Cached by all arguments. NFP partners and Giving Matters organizations
+    are rendered as a single unified "Community Partners" layer — one pin
+    style, one color scheme, one MarkerCluster — filtered by the shared
+    category selection.
 
     Args:
         granularity: 'tract' or 'zip'.
-        show_partners: Whether to show partner markers.
-        selected_layers: Tuple of selected layer column names.
+        selected_layers: Tuple of selected choropleth layer column names.
+        selected_partner_categories: Tuple of partner-type ids to include
+            in the Community Partners layer. Empty tuple means the whole
+            layer is hidden.
 
     Returns:
         HTML string of the rendered map.
@@ -118,27 +123,33 @@ def build_map_html(
         boundary_fg = build_boundary_layer(gdf)
         boundary_fg.add_to(m)
 
-    # Giving Matters circle markers (only when enabled by sidebar AND geojson exists)
-    if show_giving_matters and _giving_matters_available():
+    # Unified Community Partners layer (NFP partners + Giving Matters orgs
+    # in the same cluster, filtered by the shared category selection).
+    if selected_partner_categories:
         try:
             from src.config_loader import get_data_sources
 
-            gm_cfg = get_data_sources().get("giving_matters", {})
-            gm_gdf = gpd.read_file(str(_GIVING_MATTERS_GEOJSON))
-            gm_fg = build_giving_matters_layer(gm_gdf, gm_cfg)
-            gm_fg.add_to(m)
-        except (FileNotFoundError, ValueError, OSError) as exc:
-            logger.warning("Could not render Giving Matters layer: %s", exc)
+            try:
+                partners_gdf = load_partners()
+            except FileNotFoundError:
+                partners_gdf = None
 
-    # Partner markers
-    if show_partners:
-        try:
-            partners_gdf = load_partners()
+            gm_gdf = None
+            if _giving_matters_available():
+                try:
+                    gm_gdf = gpd.read_file(str(_GIVING_MATTERS_GEOJSON))
+                except (ValueError, OSError) as exc:
+                    logger.warning("Could not read Giving Matters geojson: %s", exc)
+
+            gm_cfg = get_data_sources().get("giving_matters", {})
             partner_cfg = get_partner_config()
-            partner_fg = build_partner_markers(partners_gdf, partner_cfg)
-            partner_fg.add_to(m)
-        except FileNotFoundError:
-            logger.warning("Partner data not available")
+            community_fg = build_community_partners_layer(
+                partners_gdf, gm_gdf, partner_cfg, gm_cfg,
+                selected_categories=selected_partner_categories,
+            )
+            community_fg.add_to(m)
+        except (FileNotFoundError, ValueError, OSError) as exc:
+            logger.warning("Could not render Community Partners layer: %s", exc)
 
     # LayerControl — pinned to topleft so it never collides with the
     # bottom-right legend stack when many overlays are active.

@@ -1,10 +1,10 @@
-"""Tests for spec_updates_2.md §3.5: Giving Matters sidebar gating.
+"""Tests for spec_updates_2.md §3.5: Community Partners sidebar gating.
 
 Verifies:
-- build_map_html accepts a show_giving_matters parameter
-- When show_giving_matters=False, the layer is NOT added even if the
-  geojson file exists
-- When show_giving_matters=True and the file exists, the layer IS added
+- build_map_html accepts the selected_partner_categories parameter
+- When the category tuple is empty, no community partners render
+- When at least one category is selected AND the giving_matters geojson
+  exists, the unified Community Partners layer is assembled
 """
 from __future__ import annotations
 
@@ -39,13 +39,13 @@ def with_giving_matters_geojson(tmp_path, monkeypatch):
     yield tmp_path
 
 
-def test_build_map_html_accepts_show_giving_matters_param() -> None:
-    """The new sidebar checkbox is plumbed through to build_map_html."""
+def test_build_map_html_accepts_selected_partner_categories_param() -> None:
+    """The unified sidebar category selector is plumbed into build_map_html."""
     import inspect
     from src.map_builder import build_map_html
 
     sig = inspect.signature(build_map_html)
-    assert "show_giving_matters" in sig.parameters
+    assert "selected_partner_categories" in sig.parameters
 
 
 def test_layer_skipped_when_show_giving_matters_false(

@@ -108,7 +108,7 @@ class TestBuildPartnerMarkers:
     def test_feature_group_name(self, sample_partners_gdf):
         partner_cfg = get_partner_config()
         fg = build_partner_markers(sample_partners_gdf, partner_cfg)
-        assert fg.layer_name == "NFP Partners"
+        assert fg.layer_name == "Community Partners"
 
     def test_markers_are_pins_not_circles(self, sample_partners_gdf):
         partner_cfg = get_partner_config()
